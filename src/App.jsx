@@ -18,7 +18,7 @@ import {
   Download,
 } from 'lucide-react';
 import { apiRequest, setSessionToken, money, num } from './api.js';
-import { buildWhatsAppInvoiceShare } from './utils/pdfGenerator.js';
+import { buildWhatsAppInvoiceShare, downloadInvoiceElementPdf } from './utils/pdfGenerator.js';
 import SalesInvoiceA5 from './invoices/SalesInvoiceA5.jsx';
 import InstallmentInvoiceA5 from './invoices/InstallmentInvoiceA5.jsx';
 import { toInvoiceModel } from './invoices/invoiceData.js';
@@ -118,6 +118,59 @@ function InstallmentPhotoField({ name, label, value = '' }) {
         </div>
       )}
     </div>
+  );
+}
+
+function InstallmentCustomerDetails({ plan }) {
+  const details = plan.installmentDetails || {};
+  const customer = details.customer || {};
+  const guarantor = details.guarantor || {};
+  const terms = details.plan || {};
+  const customerPhoto = customer.photoDataUrl || plan.customerPhoto || '';
+  const guarantorPhoto = guarantor.photoDataUrl || plan.guarantorPhoto || '';
+  const Field = ({ label, value }) => (
+    <div className="installment-detail-field">
+      <small>{label}</small>
+      <b>{value || 'Not provided'}</b>
+    </div>
+  );
+
+  return (
+    <section className="installment-account-details">
+      <div className="modal-section">CUSTOMER & GUARANTOR DETAILS</div>
+      <div className="installment-detail-panels">
+        <article className="installment-detail-panel">
+          <h3>Customer information</h3>
+          {customerPhoto && <img className="installment-detail-photo" src={customerPhoto} alt="Customer" />}
+          <Field label="Customer name" value={customer.name || plan.customerName} />
+          <Field label="ID / CNIC" value={customer.cnic || plan.cnic} />
+          <Field label="Phone number" value={customer.phone || plan.phone} />
+          <Field label="WhatsApp number" value={customer.whatsapp || plan.whatsapp} />
+          <Field label="Address" value={customer.address || plan.address} />
+        </article>
+        <article className="installment-detail-panel">
+          <h3>Guarantor information</h3>
+          {guarantorPhoto && <img className="installment-detail-photo" src={guarantorPhoto} alt="Guarantor" />}
+          <Field label="Guarantor name" value={guarantor.name || plan.guarantor} />
+          <Field label="Phone number" value={guarantor.phone || plan.guarantorPhone} />
+          <Field label="Address" value={guarantor.address || plan.guarantorAddress} />
+        </article>
+      </div>
+      <article className="installment-detail-panel installment-terms-panel">
+        <h3>Installment details</h3>
+        <div className="installment-detail-grid">
+          <Field label="Invoice / plan" value={plan.invoiceNo || plan.planNo} />
+          <Field label="Plan amount" value={money(terms.totalAmount ?? plan.totalAmount)} />
+          <Field label="Advance paid" value={money(terms.advancePaid ?? plan.advancePaid)} />
+          <Field label="Remaining balance" value={money(plan.balance)} />
+          <Field label="Duration" value={`${terms.months ?? plan.months ?? 0} months`} />
+          <Field label="Monthly installment" value={money(terms.monthlyAmount ?? plan.monthlyAmount)} />
+          <Field label="Payment method" value={terms.paymentMethod || plan.paymentMethod || 'Cash'} />
+          <Field label="Start date" value={terms.startDate || plan.startDate} />
+          <Field label="Next due date" value={terms.nextDueDate || plan.nextDueDate} />
+        </div>
+      </article>
+    </section>
   );
 }
 
@@ -473,11 +526,25 @@ export default function App() {
     }
   }
 
-  function handleWhatsAppInvoice(bill) {
+  async function handleWhatsAppInvoice(bill) {
     const fileName = `${bill.invoiceNo || bill.id || 'invoice'}.pdf`;
-    const share = buildWhatsAppInvoiceShare(bill, data.shop);
-    window.print();
-    setWhatsAppShareInfo({ bill, fileName, ...share });
+    try {
+      const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-page');
+      await downloadInvoiceElementPdf(invoiceElement, fileName);
+      const share = buildWhatsAppInvoiceShare(bill, data.shop);
+      setWhatsAppShareInfo({ bill, fileName, ...share });
+    } catch (error) {
+      showAlert('Could not create invoice PDF', error?.message || 'Please try again.', 'warning');
+    }
+  }
+
+  async function downloadSharedInvoiceAgain() {
+    try {
+      const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-page');
+      await downloadInvoiceElementPdf(invoiceElement, whatsAppShareInfo?.fileName || 'invoice.pdf');
+    } catch (error) {
+      showAlert('Could not create invoice PDF', error?.message || 'Please try again.', 'warning');
+    }
   }
 
   if (authLoading) {
@@ -1390,6 +1457,7 @@ export default function App() {
               </button>
             </div>
             <div className="modal-body">
+              <InstallmentCustomerDetails plan={activeKhataPlan} />
               <div className="payment-summary">
                 <div>
                   <small>Total Plan Amount</small>
@@ -1795,9 +1863,7 @@ export default function App() {
             </div>
             <div className="modal-body">
               <div className="modal-note" style={{ marginTop: 0 }}>
-                <b>Step 1:</b> In the print dialog, choose <b>Save as PDF</b> and save the A5 invoice as <b>{whatsAppShareInfo.fileName}</b>.
-                <br />
-                <b>Step 2:</b> Click <b>Open WhatsApp (wa.me)</b> below to open the chat with the prefilled invoice message, then attach the saved PDF manually. Browsers do not automatically attach local files into WhatsApp.
+                A5 invoice PDF <b>{whatsAppShareInfo.fileName}</b> has been downloaded. Open WhatsApp below and attach that downloaded file to the chat. Browsers do not allow this app to attach local files to WhatsApp automatically.
               </div>
 
               <label className="field" style={{ marginTop: 14 }}>
@@ -1816,9 +1882,9 @@ export default function App() {
               <button
                 type="button"
                 className="btn secondary"
-                onClick={() => window.print()}
+                onClick={downloadSharedInvoiceAgain}
               >
-                Print / Save A5 PDF Again
+                Download A5 PDF Again
               </button>
               <a
                 href={whatsAppShareInfo.waUrl}

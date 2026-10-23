@@ -1707,6 +1707,61 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.khata-customer-plans {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.khata-customer-plan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid #e7edf1;
+  border-radius: 10px;
+  background: #fbfdfe;
+}
+
+.khata-customer-plan-info,
+.khata-customer-plan-balance {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.khata-customer-plan-info b,
+.khata-customer-plan-balance b {
+  color: #284b5e;
+  font-size: 12px;
+}
+
+.khata-customer-plan-info small,
+.khata-customer-plan-balance small {
+  color: #738591;
+  font-size: 10px;
+}
+
+.khata-customer-plan-info small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .khata-customer-plan {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .khata-customer-plan-balance {
+    grid-column: 1;
+  }
+  .khata-customer-plan .btn {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
+
 .khata-card-foot {
   display: flex;
   align-items: center;
@@ -1725,6 +1780,77 @@ textarea:focus-visible {
 
 .khata-due b {
   color: #35586b;
+}
+
+.installment-account-details {
+  margin-bottom: 18px;
+}
+
+.installment-detail-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.installment-detail-panel {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #e0eaf0;
+  border-radius: 12px;
+  background: #fbfdfe;
+}
+
+.installment-detail-panel h3 {
+  margin: 0 0 10px;
+  color: #173c51;
+  font-size: 13px;
+}
+
+.installment-detail-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px 0;
+}
+
+.installment-detail-field small {
+  color: #728490;
+  font-size: 10.5px;
+}
+
+.installment-detail-field b {
+  color: #284b5e;
+  font-size: 12px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.installment-detail-photo {
+  width: 82px;
+  height: 82px;
+  margin: 0 0 6px;
+  border: 1px solid #dce7ed;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #fff;
+}
+
+.installment-terms-panel {
+  background: #f6fafc;
+}
+
+.installment-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 14px;
+}
+
+@media (max-width: 620px) {
+  .installment-detail-panels,
+  .installment-detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Inventory & Stock Styles */

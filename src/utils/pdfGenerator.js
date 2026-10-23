@@ -1,5 +1,22 @@
 import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { money, num } from '../api.js';
+
+/** Capture the actual A5 invoice component and download it as a one-page PDF. */
+export async function downloadInvoiceElementPdf(element, fileName) {
+  if (!element) throw new Error('Invoice preview is not available. Open the invoice and try again.');
+
+  const canvas = await html2canvas(element, {
+    backgroundColor: '#ffffff',
+    scale: 2.5,
+    useCORS: true,
+    logging: false,
+  });
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [148, 210], compress: true });
+  doc.addImage(canvas.toDataURL('image/jpeg', 0.96), 'JPEG', 0, 0, 148, 210, undefined, 'FAST');
+  doc.save(fileName);
+  return fileName;
+}
 
 /**
  * Generates and downloads a real PDF Invoice / Receipt for a saved sale or installment payment.
