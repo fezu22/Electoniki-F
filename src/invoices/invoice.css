@@ -1,0 +1,76 @@
+:root{--ci-blue:#1763a8;--ci-blue-2:#dceeff;--ci-line:#a9cbe8;--ci-ink:#111;--ci-paper:#fff}
+.ci-receipt-footer{position:absolute;left:5mm;bottom:4mm;width:82mm;max-height:8mm;overflow:hidden;color:#445b68;font-size:6.5pt;line-height:1.25}
+.ci-items{height:var(--ci-items-height,auto)}
+.ci-page{box-sizing:border-box;width:148mm;height:210mm;padding:5mm 4.5mm 4mm;background:var(--ci-paper);color:var(--ci-ink);font-family:Arial,Helvetica,sans-serif;position:relative;border:1px solid #b8c8d5;overflow:hidden;font-size:8.6pt;line-height:1.2}
+.ci-page *{box-sizing:border-box}.ci-header{height:24mm;display:grid;grid-template-columns:25mm 1fr 19mm;grid-template-rows:16mm 7mm;align-items:center;border-bottom:1px solid var(--ci-line);position:relative;padding-bottom:1mm}.ci-brand-mark{grid-column:1;grid-row:1;width:25mm;color:#111}.ci-brand-mark svg{width:100%;height:auto}.ci-brand-copy{grid-column:2;grid-row:1;text-align:center;line-height:1}.ci-shop-name{font-size:25pt;font-weight:900;letter-spacing:1.2px}.ci-shop-subtitle{font-size:12pt;font-weight:800;letter-spacing:3.2px;margin-top:1mm}.ci-invoice-kind{grid-column:3;grid-row:1/3;border-left:1px solid var(--ci-line);padding-left:2mm;color:var(--ci-blue);font-size:9pt;font-weight:800;line-height:1.15;text-align:center}.ci-contact-row{grid-column:2;grid-row:2;display:flex;justify-content:center;align-items:center;gap:3mm;font-size:8.2pt}.ci-contact-row i{height:4mm;border-left:1px solid #888}.ci-categories{display:flex;align-items:center;justify-content:center;gap:2mm;margin-top:2mm;font-size:7pt;font-weight:600}.ci-categories b{color:var(--ci-blue);font-size:7pt}.ci-shop-address{text-align:center;font-size:7.5pt;margin:1mm 0 2mm}.ci-customer{height:18mm;padding:2mm 2.5mm;background:#f4f9fd;border:1px solid var(--ci-line);border-radius:2mm;display:grid;grid-template-rows:repeat(3,1fr);gap:.5mm;margin-bottom:2mm}.ci-customer>div{display:grid;grid-template-columns:25mm 1fr 10mm 27mm;align-items:center;gap:1mm}.ci-customer b{font-size:7.8pt}.ci-customer strong{font-size:8pt;font-weight:600;border-bottom:1px solid #aab6bf;min-height:4mm;padding-left:1mm}.ci-customer .ci-date-label{grid-column:3}.ci-customer .ci-address-value{grid-column:2/5}
+.ci-items{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:2mm;font-size:7.4pt}.ci-items th{background:var(--ci-blue-2);color:#111;font-weight:700;height:6mm}.ci-items td,.ci-items th{border:1px solid var(--ci-line);padding:1mm;text-align:center}.ci-items td:nth-child(2){text-align:left;padding-left:2mm}.ci-items tbody tr{height:5.7mm}.ci-items th:nth-child(1){width:8%}.ci-items th:nth-child(2){width:38%}.ci-items th:nth-child(3){width:12%}.ci-items th:nth-child(4){width:20%}.ci-items th:nth-child(5){width:22%}
+.ci-bottom{display:grid;gap:3mm;align-items:start}.ci-sales-bottom{grid-template-columns:1.1fr .9fr}.ci-installment-bottom{grid-template-columns:1fr 1fr}.ci-summary,.ci-terms,.ci-plan{border:1px solid var(--ci-line);border-radius:2mm;overflow:hidden}.ci-summary h3,.ci-terms h3,.ci-plan h3{margin:0;padding:1.5mm 2mm;background:#eef7ff;color:var(--ci-blue);font-size:9pt;font-weight:800}.ci-summary-icon{font-size:11pt;margin-right:2mm}.ci-summary-row{min-height:8mm;padding:1mm 2mm;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #d4e4f1;font-size:7.7pt}.ci-summary-row.is-strong{background:#edf6fd;font-weight:800}.ci-summary-row span:last-child{font-weight:700;text-align:right}.ci-terms ol{margin:1mm 1mm 1.5mm;padding-left:6mm;font-size:6.6pt}.ci-terms li{padding:.45mm 0}.ci-plan>div{height:15mm;display:flex;align-items:center;justify-content:center;background:#f3f8fd;margin:1.5mm;padding:1.5mm;border-radius:1.5mm;font-size:11pt;font-weight:800;text-align:center}.ci-right-stack{display:grid;gap:2mm}.ci-signature{position:absolute;bottom:4mm;right:5mm;width:47mm;text-align:center;font-size:7pt}.ci-sign-line{border-top:1px solid #222;margin-bottom:1mm}.ci-signature small{display:block;font-size:6.5pt}
+.ci-page{page:auto}@page{size:A5 portrait;margin:0}@media print{.ci-page{border:1px solid #1672c8;width:148mm;height:210mm;break-after:avoid;page-break-after:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+.ci-shop-name { font-size:20pt; letter-spacing:.5px; white-space:nowrap; }
+.ci-shop-subtitle { font-size:9.5pt; letter-spacing:2.3px; margin-top:.6mm; }
+.ci-contact-row { font-size:7.3pt; white-space:nowrap; }
+.ci-invoice-kind { font-size:7.3pt; overflow-wrap:anywhere; padding-inline:1mm; }
+.ci-continuation { margin-top:2mm; padding:2mm; border:1px dashed var(--ci-line); color:#536b7a; font-size:7.5pt; text-align:right; }
+.ci-installment-bottom .ci-summary-row { min-height:6.2mm; font-size:7.2pt; }
+@media print { .ci-page { break-after:page; page-break-after:always; } .ci-page.ci-last-page { break-after:avoid; page-break-after:avoid; } }
+
+/* Climax A5 invoice reference styling */
+.ci-page{border:1px solid #1672c8;padding:4.5mm 4.5mm 4mm;font-family:"Arial Narrow",Arial,sans-serif;color:#101820}
+.ci-header{grid-template-columns:24mm 32mm minmax(0,1fr) 18mm;grid-template-rows:16mm 7mm;column-gap:1mm;height:24mm;padding:0 1mm 1mm;border-bottom:1px solid #70b2ee}
+.ci-appliance-art{grid-column:1;grid-row:1;width:24mm;height:21mm;align-self:center}
+.ci-fan-art{grid-column:2;grid-row:1;width:32mm;height:22mm;align-self:center}
+.ci-brand-copy{grid-column:3;grid-row:1/3;align-self:center;text-align:center;line-height:1;min-width:0}
+.ci-shop-name{font-size:32pt;font-weight:900;letter-spacing:.25px;color:#064b89;white-space:nowrap;overflow:hidden;text-overflow:clip}
+.ci-shop-subtitle{margin-top:.5mm;font-size:10pt;font-weight:800;letter-spacing:2.1px;color:#111820;white-space:nowrap;overflow:hidden;text-overflow:clip}
+.ci-contact-row{display:flex;justify-content:center;align-items:center;gap:2mm;margin-top:1.1mm;font-size:7.8pt;white-space:nowrap}
+.ci-contact-row span{display:inline-flex;align-items:center;gap:1mm}
+.ci-contact-row svg{width:3mm;height:3mm;fill:#073f78;color:#073f78;stroke:#fff;stroke-width:2.4}
+.ci-contact-row i{height:4mm;border-left:1px solid #59758f}
+.ci-invoice-kind{grid-column:4;grid-row:1/3;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1mm;border:0;border-left:1px solid #70b2ee;border-radius:2mm;padding:1mm;background:linear-gradient(145deg,#e7f5ff,#d1eaff);color:#111820;font-size:8pt;line-height:1.05;text-align:center}
+.ci-invoice-kind strong{color:#0757a6;font-size:12pt;line-height:1.05}
+.ci-invoice-kind span{font-size:9pt;font-weight:900}
+.ci-categories{gap:1.8mm;margin-top:1.7mm;color:#18232c;font-size:6.8pt;white-space:nowrap}
+.ci-categories span{display:inline-flex;align-items:center;gap:1mm}
+.ci-categories svg{width:3.2mm;height:3.2mm;fill:#111b24;stroke:#111b24}
+.ci-categories b{color:#23669f;font-size:7pt}
+.ci-categories .ci-fan-symbol{font-size:12pt;line-height:1}
+.ci-shop-address{display:flex;justify-content:center;align-items:center;gap:1mm;margin:1mm 0 2mm;color:#17212a;font-size:8pt}
+.ci-shop-address svg{width:3mm;height:3mm;fill:#0d2338;color:#0d2338;stroke:#fff}
+.ci-customer{height:21mm;padding:1.5mm 2.5mm;background:linear-gradient(105deg,#edf7ff,#dcefff);border-color:#d2eafa;border-radius:2mm;grid-template-rows:repeat(3,minmax(0,1fr));gap:.5mm;margin-bottom:2mm}
+.ci-customer-row{display:grid;grid-template-columns:29mm minmax(0,1fr) 12mm 27mm;align-items:center;gap:1mm;min-width:0}
+.ci-customer>div.ci-customer-row{grid-template-columns:29mm minmax(0,1fr) 12mm 27mm}
+.ci-customer-row b{font-size:8pt;font-weight:700}
+.ci-customer-row strong{min-width:0;min-height:4mm;padding:0 1mm;border:0;border-bottom:1px solid #64a5df;font-size:8.3pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ci-customer-row .ci-invoice-number{display:inline-flex;align-items:center;min-height:6mm;border:0;border-radius:1.4mm;background:#d4eaff;color:#102434;font-size:10pt;font-weight:900}
+.ci-customer-row .ci-date-label{grid-column:3}
+.ci-customer-row .ci-date-value{grid-column:4;display:flex;align-items:center;gap:1mm}
+.ci-date-value svg{width:3mm;height:3mm;flex:none;color:#1a2730}
+.ci-customer-row .ci-customer-value{grid-column:2/5}
+.ci-items{border-radius:1.5mm;margin-bottom:2.5mm;font-size:7.8pt}
+.ci-items th{height:7mm;background:linear-gradient(180deg,#cce8ff,#b7dcfb);color:#0a2740;font-size:8.6pt;font-weight:800}
+.ci-items td,.ci-items th{border-color:#83bdf0;padding:1mm}
+.ci-items tbody tr{height:6.6mm}
+.ci-items tbody tr:nth-child(even){background:#f5faff}
+.ci-summary,.ci-plan{border-color:#86bff0;border-radius:1.8mm}
+.ci-summary h3,.ci-plan h3{display:flex;align-items:center;gap:2mm;padding:1.7mm 2.5mm;background:linear-gradient(110deg,#e4f3ff,#d2eaff);color:#0757a6;font-size:12pt;font-weight:900}
+.ci-summary-title-icon{display:inline-grid;place-items:center;width:6mm;height:6mm;border-radius:1mm;background:#0962b6;color:#fff;font-size:13pt;line-height:1}
+.ci-summary-row{min-height:10mm;padding:1mm 2.5mm;border-color:#d4e6f4;font-size:8pt}
+.ci-summary-row.is-strong{background:#e5f3ff;color:#0a2740}
+.ci-summary-label{display:inline-flex;align-items:center;gap:2mm}
+.ci-summary-label svg{width:5mm;height:5mm;flex:none;color:#111a20;stroke-width:2.7}
+.ci-percent-icon{display:inline-grid;place-items:center;width:5mm;height:5mm;border:1.4px solid currentColor;border-radius:50%;font-size:7pt;font-weight:900}
+.ci-summary-value{font-size:10pt;font-weight:900!important;white-space:nowrap}
+.ci-installment-bottom .ci-summary-row{min-height:7mm;font-size:7.5pt}
+.ci-installment .ci-invoice-kind strong{font-size:7.6pt;letter-spacing:-.2px;white-space:nowrap}
+.ci-summary-title-icon svg{width:5mm;height:5mm}
+.ci-installment-bottom{grid-template-columns:1.2fr .8fr}
+.ci-installment .ci-plan>div{font-size:9.5pt;white-space:nowrap}
+.ci-appliance-art,.ci-fan-art{display:block;object-fit:cover;object-position:center;background:#fff;mix-blend-mode:multiply}
+.ci-installment-bottom .ci-summary-value{font-size:9pt}
+.ci-plan h3{font-size:12pt}.ci-plan h3 svg{width:6mm;height:6mm;color:#0757a6;flex:none}
+.ci-plan>div{height:17mm;background:#e7f4ff;color:#111820;font-size:12pt;font-weight:900}
+.ci-signature{bottom:5mm;right:5mm;width:52mm;font-size:8pt}
+.ci-sign-line{border-top:1px solid #111;margin-bottom:1.5mm}
+.ci-signature small{margin-top:.5mm;font-size:7.5pt}
+.ci-continuation{border-color:#86bff0;color:#31566f}
+@media print{.ci-page{break-after:page;page-break-after:always}.ci-page.ci-last-page{break-after:avoid;page-break-after:avoid}}
