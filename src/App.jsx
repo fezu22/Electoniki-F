@@ -257,6 +257,7 @@ export default function App() {
   const [khataPayMethod, setKhataPayMethod] = useState('cash');
   const [khataPayBank, setKhataPayBank] = useState('HBL');
   const [khataPayNote, setKhataPayNote] = useState('');
+  const [savingReminderSetting, setSavingReminderSetting] = useState(false);
 
   // Stock & Products state
   const [inventorySearch, setInventorySearch] = useState('');
@@ -289,6 +290,25 @@ export default function App() {
   async function refreshWorkspace(role = data.user?.role) {
     const boot = await apiRequest(role === 'overview_viewer' ? '/overview' : '/bootstrap');
     setData(boot);
+  }
+
+  async function updateInstallmentReminder(plan, enabled) {
+    setSavingReminderSetting(true);
+    try {
+      const res = await apiRequest(`/installments/${plan.id}/reminders`, {
+        method: 'PATCH',
+        body: { enabled, customerConsent: enabled },
+      });
+      setActiveKhataPlan(res.plan);
+      await refreshWorkspace();
+      notify(enabled
+        ? 'Monthly WhatsApp reminders enabled. The customer has been recorded as opted in.'
+        : 'Monthly WhatsApp reminders stopped for this plan.');
+    } catch (err) {
+      showAlert('Reminder setting not saved', err.message, 'warning');
+    } finally {
+      setSavingReminderSetting(false);
+    }
   }
 
   useEffect(() => {
@@ -1463,6 +1483,27 @@ export default function App() {
             </div>
             <div className="modal-body">
               <InstallmentCustomerDetails plan={activeKhataPlan} />
+              {data.user?.role === 'owner' && num(activeKhataPlan.balance) > 0 && (
+                <div className="modal-note" style={{ margin: '0 0 16px' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      style={{ width: 16, height: 16, marginTop: 2 }}
+                      checked={Boolean(activeKhataPlan.whatsappReminderEnabled)}
+                      disabled={savingReminderSetting || !activeKhataPlan.whatsapp && !activeKhataPlan.phone}
+                      onChange={(event) => updateInstallmentReminder(activeKhataPlan, event.target.checked)}
+                    />
+                    <span>
+                      <b>Customer agreed to monthly WhatsApp reminders</b>
+                      <small style={{ display: 'block', marginTop: 4 }}>
+                        {data.shop?.whatsappAutomationConfigured
+                          ? 'When enabled in Settings, a reminder is sent on or after the due date each month until this plan is paid or you turn this off.'
+                          : 'Save the WhatsApp Cloud API credentials and approved reminder template on the backend before messages can be sent.'}
+                      </small>
+                    </span>
+                  </label>
+                </div>
+              )}
               <div className="payment-summary">
                 <div>
                   <small>Total Plan Amount</small>

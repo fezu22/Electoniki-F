@@ -12,6 +12,18 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
   const [invoicePrefix, setInvoicePrefix] = useState(shop.invoicePrefix || 'INV');
   const [openingCash, setOpeningCash] = useState(String(shop.openingCash ?? 45000));
   const [receiptFooter, setReceiptFooter] = useState(shop.receiptFooter || '');
+  const [installmentRemindersEnabled, setInstallmentRemindersEnabled] = useState(
+    Boolean(shop.automation?.installmentRemindersEnabled)
+  );
+  const [lowStockAlertsEnabled, setLowStockAlertsEnabled] = useState(
+    Boolean(shop.automation?.lowStockAlertsEnabled)
+  );
+  const [lowStockRecipientOne, setLowStockRecipientOne] = useState(
+    shop.automation?.lowStockRecipients?.[0] ? `+${shop.automation.lowStockRecipients[0]}` : ''
+  );
+  const [lowStockRecipientTwo, setLowStockRecipientTwo] = useState(
+    shop.automation?.lowStockRecipients?.[1] ? `+${shop.automation.lowStockRecipients[1]}` : ''
+  );
   const [savingShop, setSavingShop] = useState(false);
 
   // User modal state
@@ -42,6 +54,11 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
           invoicePrefix,
           openingCash: num(openingCash),
           receiptFooter,
+          automation: {
+            installmentRemindersEnabled,
+            lowStockAlertsEnabled,
+            lowStockRecipients: [lowStockRecipientOne, lowStockRecipientTwo],
+          },
         },
       });
       await onRefresh();
@@ -220,6 +237,40 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
                   onChange={(e) => setReceiptFooter(e.target.value)}
                 />
               </label>
+              <div className="field full" style={{ padding: 16, border: '1px solid #dbe7ed', borderRadius: 12, background: '#f7fbfd' }}>
+                <b style={{ color: '#12303f' }}>WhatsApp Automations</b>
+                <p className="muted tiny" style={{ margin: '5px 0 12px' }}>
+                  Connection: <b>{shop.whatsappAutomationConfigured ? 'Ready' : 'Needs WhatsApp Cloud API setup'}</b>. Messages use approved WhatsApp templates.
+                </p>
+                <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginBottom: 12 }}>
+                  <input
+                    type="checkbox"
+                    disabled={!isOwner}
+                    checked={installmentRemindersEnabled}
+                    onChange={(e) => setInstallmentRemindersEnabled(e.target.checked)}
+                  />
+                  <span><b>Monthly installment reminders</b><small className="muted" style={{ display: 'block' }}>Send once each due month to opted-in customers with an unpaid plan. Paid plans stop automatically.</small></span>
+                </label>
+                <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginBottom: 12 }}>
+                  <input
+                    type="checkbox"
+                    disabled={!isOwner}
+                    checked={lowStockAlertsEnabled}
+                    onChange={(e) => setLowStockAlertsEnabled(e.target.checked)}
+                  />
+                  <span><b>Low-stock WhatsApp alerts</b><small className="muted" style={{ display: 'block' }}>Send an alert to both numbers when stock reaches its reorder threshold. It rearms after restocking.</small></span>
+                </label>
+                <div className="fields">
+                  <label className="field">
+                    Alert WhatsApp number 1
+                    <input type="tel" disabled={!isOwner} value={lowStockRecipientOne} onChange={(e) => setLowStockRecipientOne(e.target.value)} placeholder="+923001234567" />
+                  </label>
+                  <label className="field">
+                    Alert WhatsApp number 2
+                    <input type="tel" disabled={!isOwner} value={lowStockRecipientTwo} onChange={(e) => setLowStockRecipientTwo(e.target.value)} placeholder="+923009876543" />
+                  </label>
+                </div>
+              </div>
             </div>
 
             {isOwner && (
