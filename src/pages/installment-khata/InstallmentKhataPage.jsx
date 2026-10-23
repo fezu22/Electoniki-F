@@ -166,12 +166,14 @@ export default function InstallmentKhataPage({ app }) {
                         <button
                           type="button"
                           className="btn ghost small"
+                          aria-label={`${num(item.balance) > 0 ? 'View and record payment for' : 'View details for'} installment plan ${item.planNo || item.invoiceNo}`}
+                          title={num(item.balance) > 0 ? 'Open plan details and record a payment' : 'Open completed plan details'}
                           onClick={() => {
                             setActiveKhataPlan(item);
                             setKhataPayAmount(String(Math.min(num(item.balance), num(item.monthlyAmount) || num(item.balance))));
                           }}
                         >
-                          {num(item.balance) > 0 ? 'View & Pay' : 'View'}
+                          {num(item.balance) > 0 ? 'View & Pay' : 'View Details'}
                         </button>
                       </div>
                     ))}

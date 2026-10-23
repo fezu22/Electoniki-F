@@ -1441,12 +1441,17 @@ export default function App() {
             <div className="modal-head">
               <div>
                 <h2>
-                  Installment Account · {activeKhataPlan.customerName} ({activeKhataPlan.planNo})
+                  Installment Details · {activeKhataPlan.customerName} ({activeKhataPlan.planNo})
                 </h2>
                 <p>
                   Product: {activeKhataPlan.productSummary || 'Installment Plan'} · Guarantor:{' '}
                   {activeKhataPlan.guarantor || 'None'}
                 </p>
+                {num(activeKhataPlan.balance) <= 0 && (
+                  <span className="khata-status paid" style={{ display: 'inline-flex', marginTop: 8 }}>
+                    Paid in full · Completed plan details
+                  </span>
+                )}
               </div>
               <button
                 type="button"
