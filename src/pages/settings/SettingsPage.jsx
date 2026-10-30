@@ -1,3 +1,4 @@
+import NumericInput from '../../components/NumericInput.jsx';
 import React, { useState } from 'react';
 import { apiRequest, money, num } from '../../api.js';
 
@@ -253,8 +254,8 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
               </label>
               <label className="field">
                 Opening Cash Balance (Rs.)
-                <input
-                  type="number"
+                <NumericInput
+                  type="text"
                   min="0"
                   disabled={!isOwner}
                   value={openingCash}
@@ -281,7 +282,7 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
                     checked={installmentRemindersEnabled}
                     onChange={(e) => setInstallmentRemindersEnabled(e.target.checked)}
                   />
-                  <span><b>Monthly installment reminders</b><small className="muted" style={{ display: 'block' }}>Send once each due month to opted-in customers with an unpaid plan. Paid plans stop automatically.</small></span>
+                  <span><b>Daily installment reminders at 8:00 AM</b><small className="muted" style={{ display: 'block' }}>After the due date, remind opted-in customers once each morning until a payment is recorded in Khata. Paid plans stop automatically.</small></span>
                 </label>
                 <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginBottom: 12 }}>
                   <input

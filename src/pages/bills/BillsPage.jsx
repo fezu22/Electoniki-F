@@ -1,7 +1,8 @@
+import NumericInput from '../../components/NumericInput.jsx';
 import React, { useState } from 'react';
 import { apiRequest, money, num } from '../../api.js';
 
-export default function BillsView({ sales = [], shop, onOpenInvoice, onNewSale, onRefresh, notify, showAlert }) {
+export default function BillsView({ sales = [], installmentPlans = [], shop, onOpenInvoice, onNewSale, onRefresh, notify, showAlert }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -9,6 +10,8 @@ export default function BillsView({ sales = [], shop, onOpenInvoice, onNewSale, 
   const [receiveBill, setReceiveBill] = useState(null);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
+
+  const planByInvoice = new Map(installmentPlans.map((plan) => [String(plan.invoiceNo || ''), plan]));
 
   const filtered = sales.filter((b) => {
     const q = search.trim().toLowerCase();
@@ -19,10 +22,15 @@ export default function BillsView({ sales = [], shop, onOpenInvoice, onNewSale, 
       String(b.phone || '').toLowerCase().includes(q);
     const matchType = typeFilter === 'all' || b.type === typeFilter;
     const isPaid = num(b.balance) === 0;
+    const linkedPlan = planByInvoice.get(String(b.invoiceNo || ''));
+    const hasBalance = !isPaid;
+    const isActivePlan = hasBalance && (b.type === 'installment' || Boolean(linkedPlan && num(linkedPlan.balance) > 0));
     const matchStatus =
       statusFilter === 'all' ||
       (statusFilter === 'paid' && isPaid) ||
-      (statusFilter === 'unpaid' && !isPaid);
+      (statusFilter === 'unpaid' && hasBalance) ||
+      (statusFilter === 'balance-due' && hasBalance && !isActivePlan) ||
+      (statusFilter === 'active-plan' && isActivePlan);
     const matchDate = !dateFilter || String(b.createdAt || '').startsWith(dateFilter);
     return matchText && matchType && matchStatus && matchDate;
   });
@@ -124,6 +132,8 @@ export default function BillsView({ sales = [], shop, onOpenInvoice, onNewSale, 
               <option value="all">All Statuses</option>
               <option value="paid">Fully Paid</option>
               <option value="unpaid">Has Balance</option>
+              <option value="balance-due">Balance Due</option>
+              <option value="active-plan">Active Plan</option>
             </select>
             <input
               type="date"
@@ -241,8 +251,8 @@ export default function BillsView({ sales = [], shop, onOpenInvoice, onNewSale, 
                 <div className="fields">
                   <label className="field">
                     Amount Received (Rs.)
-                    <input
-                      type="number"
+                    <NumericInput
+                      type="text"
                       min="1"
                       max={receiveBill.balance}
                       required

@@ -2,8 +2,55 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { money, num } from '../api.js';
 
-/** Capture every A5 invoice page and download them together as a PDF. */
-export async function downloadInvoiceElementPdf(element, fileName) {
+function safeColorFunctions(value, property) {
+  const fallback = property.includes('background') ? '#e7f4ff' : property.includes('shadow') ? 'rgba(16, 43, 63, 0.12)' : '#12303f';
+  let output = String(value || '');
+  for (const name of ['color-mix', 'color']) {
+    const needle = `${name}(`;
+    let start = output.indexOf(needle);
+    while (start !== -1) {
+      let depth = 0;
+      let end = start;
+      for (; end < output.length; end += 1) {
+        if (output[end] === '(') depth += 1;
+        if (output[end] === ')' && --depth === 0) break;
+      }
+      if (end >= output.length) break;
+      output = `${output.slice(0, start)}${fallback}${output.slice(end + 1)}`;
+      start = output.indexOf(needle, start + fallback.length);
+    }
+  }
+  return output;
+}
+
+function createIsolatedInvoicePage(page) {
+  const bounds = page.getBoundingClientRect();
+  const wrapper = document.createElement('div');
+  wrapper.setAttribute('aria-hidden', 'true');
+  Object.assign(wrapper.style, { position: 'fixed', left: '-10000px', top: '0', width: `${bounds.width}px`, height: `${bounds.height}px`, overflow: 'hidden', zIndex: '-1', background: '#fff' });
+  const clone = page.cloneNode(true);
+  const originals = [page, ...page.querySelectorAll('*')];
+  const clones = [clone, ...clone.querySelectorAll('*')];
+  originals.forEach((original, index) => {
+    const computed = window.getComputedStyle(original);
+    const target = clones[index];
+    for (const property of computed) {
+      if (property.startsWith('--')) continue;
+      const value = safeColorFunctions(computed.getPropertyValue(property), property);
+      if (value) target.style.setProperty(property, value, computed.getPropertyPriority(property));
+    }
+    target.removeAttribute('class');
+  });
+  clone.style.width = `${bounds.width}px`;
+  clone.style.height = `${bounds.height}px`;
+  clone.style.margin = '0';
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
+  return { wrapper, clone };
+}
+
+/** Render all invoice pages to one A5 PDF blob, without downloading it. */
+export async function createInvoiceElementPdf(element, fileName = 'invoice.pdf') {
   if (!element) throw new Error('Invoice preview is not available. Open the invoice and try again.');
   const pages = element.matches?.('.ci-page') ? [element] : [...element.querySelectorAll('.ci-page')];
   if (!pages.length) throw new Error('Invoice pages are not available. Open the invoice and try again.');
@@ -12,16 +59,34 @@ export async function downloadInvoiceElementPdf(element, fileName) {
     await Promise.all([...page.querySelectorAll('img')].map((image) =>
       image.decode ? image.decode().catch(() => undefined) : Promise.resolve()
     ));
-    const canvas = await html2canvas(page, {
-      backgroundColor: '#ffffff',
-      scale: 2.5,
-      useCORS: true,
-      logging: false,
-    });
+    const isolated = createIsolatedInvoicePage(page);
+    let canvas;
+    try {
+      canvas = await html2canvas(isolated.clone, { backgroundColor: '#ffffff', scale: 2.5, useCORS: true, logging: false });
+    } finally {
+      isolated.wrapper.remove();
+    }
     if (index > 0) doc.addPage([148, 210], 'portrait');
     doc.addImage(canvas.toDataURL('image/jpeg', 0.96), 'JPEG', 0, 0, 148, 210, undefined, 'FAST');
   }
-  doc.save(fileName);
+  return { fileName, blob: doc.output('blob'), doc };
+}
+
+export function downloadInvoicePdfBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Capture every A5 invoice page and download them together as a PDF. */
+export async function downloadInvoiceElementPdf(element, fileName) {
+  const pdf = await createInvoiceElementPdf(element, fileName);
+  downloadInvoicePdfBlob(pdf.blob, pdf.fileName);
   return fileName;
 }
 
@@ -234,7 +299,7 @@ export function buildWhatsAppInvoiceShare(sale, shop) {
   lines.push(`Please find your attached PDF invoice (${invoiceNo}). Thank you for your business!`);
 
   const text = lines.join('\n');
-  const targetPhone = customerPhone || normalizeWhatsAppPhone(shopWa);
+  const targetPhone = customerPhone;
   const waUrl = targetPhone
     ? `https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`
     : `https://wa.me/?text=${encodeURIComponent(text)}`;

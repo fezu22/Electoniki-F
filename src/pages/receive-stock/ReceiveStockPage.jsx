@@ -1,3 +1,4 @@
+import NumericInput from '../../components/NumericInput.jsx';
 import React, { useState, useRef, useEffect } from 'react';
 import { FileUp, ScanBarcode, FileText, PackagePlus, ListChecks, Wallet, ScanLine, Sparkles } from 'lucide-react';
 import { apiRequest, money, num } from '../../api.js';
@@ -537,8 +538,8 @@ export default function StockReceivePage({
                         </label>
                         <label className="field">
                           Invoice total (Rs.)
-                          <input
-                            type="number"
+                          <NumericInput
+                            type="text"
                             min="0"
                             required
                             value={invoiceTotal}
@@ -615,10 +616,11 @@ export default function StockReceivePage({
 
                       <label>
                         Qty
-                        <input
+                        <NumericInput
                           ref={qtyInputRef}
-                          type="number"
+                          type="text"
                           min="1"
+                          step="1"
                           value={siQty}
                           onChange={(e) => setSiQty(e.target.value)}
                           onKeyDown={(e) => {
@@ -633,9 +635,9 @@ export default function StockReceivePage({
 
                       <label>
                         Purchase Cost (Rs.)
-                        <input
+                        <NumericInput
                           ref={costInputRef}
-                          type="number"
+                          type="text"
                           min="1"
                           value={siCost}
                           onChange={(e) => setSiCost(e.target.value)}
@@ -651,9 +653,9 @@ export default function StockReceivePage({
 
                       <label>
                         Sale Price (Rs.)
-                        <input
+                        <NumericInput
                           id="stock-sale-price"
-                          type="number"
+                          type="text"
                           min="0.01"
                           step="0.01"
                           value={siPrice}
@@ -726,9 +728,9 @@ export default function StockReceivePage({
                                       </select>
                                       {item.reviewNote && <small className="stock-review-warning">{item.reviewNote}</small>}
                                     </td>
-                                    <td><input type="number" min="1" step="1" aria-label={`Quantity, row ${index + 1}`} value={item.qty} onChange={(e) => update('qty', e.target.value)} /></td>
-                                    <td><input type="number" min="0.01" step="0.01" aria-label={`Purchase cost, row ${index + 1}`} value={item.cost} onChange={(e) => update('cost', e.target.value)} /></td>
-                                    <td className="sale-column"><input type="number" min="0.01" step="0.01" aria-label={`Sale price, row ${index + 1}`} placeholder="Enter price" value={item.price ?? ''} onChange={(e) => update('price', e.target.value)} /></td>
+                                    <td><NumericInput type="text" min="1" step="1" aria-label={`Quantity, row ${index + 1}`} value={item.qty} onChange={(e) => update('qty', e.target.value)} /></td>
+                                    <td><NumericInput type="text" min="0.01" step="0.01" aria-label={`Purchase cost, row ${index + 1}`} value={item.cost} onChange={(e) => update('cost', e.target.value)} /></td>
+                                    <td className="sale-column"><NumericInput type="text" min="0.01" step="0.01" aria-label={`Sale price, row ${index + 1}`} placeholder="Enter price" value={item.price ?? ''} onChange={(e) => update('price', e.target.value)} /></td>
                                     <td><strong>{money(num(item.qty) * num(item.cost))}</strong></td>
                                     <td><button type="button" className="icon-btn" aria-label={`Remove item ${index + 1}`} onClick={() => handleRemoveDraftItem(index)}>×</button></td>
                                   </tr>;
@@ -761,8 +763,8 @@ export default function StockReceivePage({
                                 </strong>
                                 <label className="stock-item-sale-price">
                                   Sale Price (Rs.)
-                                  <input
-                                    type="number"
+                                  <NumericInput
+                                    type="text"
                                     min="0.01"
                                     step="0.01"
                                     aria-label={`Sale price for ${it.name || `item ${idx + 1}`}`}
@@ -851,8 +853,8 @@ export default function StockReceivePage({
                         </label>
                         <label className="field">
                           Paid now (Rs.)
-                          <input
-                            type="number"
+                          <NumericInput
+                            type="text"
                             min="0"
                             value={paidNow}
                             disabled={paymentMethod === 'credit'}

@@ -16,7 +16,9 @@ import {
 import { apiRequest, money, num } from '../../api.js';
 
 export default function DashboardPage({ app }) {
-  const { data, page, setPage, dashPeriod, setDashPeriod } = app;
+  const { data, page, setPage, dashPeriod, setDashPeriod, dashDate, setDashDate, showAlert } = app;
+  const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(new Date());
+  const periodLabel = dashPeriod === 'all' ? 'All time' : dashPeriod === 'month' ? 'This month' : dashPeriod === 'today' ? 'Today' : dashDate;
   return (
               <>
                 <div className="page-head">
@@ -39,29 +41,34 @@ export default function DashboardPage({ app }) {
                           {label}
                         </button>
                       ))}
+                      <button type="button" className={dashPeriod === 'date' ? 'on' : ''} onClick={() => setDashPeriod('date')}>Specific date</button>
                     </div>
+                    {dashPeriod === 'date' && <input type="date" aria-label="Dashboard date" value={dashDate} max={todayKey} onChange={(event) => {
+                      const nextDate = event.target.value;
+                      if (nextDate > todayKey) { showAlert?.('Future date not allowed', 'Dashboard dates can only be today or earlier.', 'warning'); return; }
+                      setDashDate(nextDate);
+                    }} />}
                   </div>
                 </div>
 
                 {/* 8 Comprehensive Database-Calculated KPIs */}
                 <div className="grid dash-kpis">
                   <section className="card dash-kpi">
-                    <div className="dash-kpi-head">Sales today</div>
-                    <div className="dash-kpi-value">{money(data.summary.todaySales)}</div>
+                    <div className="dash-kpi-head">Net sales · {periodLabel}</div>
+                    <div className="dash-kpi-value">{money(data.summary.netSales)}</div>
                     <div className="dash-kpi-note">
-                      {data.summary.todayBillsCount || 0} bill
-                      {data.summary.todayBillsCount === 1 ? '' : 's'} recorded today
+                      {data.summary.periodBillsCount || 0} bills · returns: {money(data.summary.returnsTotal)}
                     </div>
                   </section>
                   <section className="card dash-kpi">
-                    <div className="dash-kpi-head">Gross & Net Sales</div>
-                    <div className="dash-kpi-value">{money(data.summary.netSales)}</div>
+                    <div className="dash-kpi-head">Gross sales · {periodLabel}</div>
+                    <div className="dash-kpi-value">{money(data.summary.grossSales)}</div>
                     <div className="dash-kpi-note">
                       Gross: {money(data.summary.grossSales)} · {data.summary.periodBillsCount || 0} bills
                     </div>
                   </section>
                   <section className="card dash-kpi">
-                    <div className="dash-kpi-head">Collected payments</div>
+                    <div className="dash-kpi-head">Collected payments · {periodLabel}</div>
                     <div className="dash-kpi-value" style={{ color: '#168365' }}>
                       {money(data.summary.collectedPayments)}
                     </div>
@@ -82,18 +89,18 @@ export default function DashboardPage({ app }) {
                     <div className="dash-kpi-head">Cash in hand</div>
                     <div className="dash-kpi-value">{money(data.summary.cashInHand)}</div>
                     <div className="dash-kpi-note">
-                      Opening + cash inflows − cash expenses
+                      Current balance snapshot: opening + inflows - outflows
                     </div>
                   </section>
                   <section className="card dash-kpi">
                     <div className="dash-kpi-head">Bank balances</div>
                     <div className="dash-kpi-value">{money(data.summary.bankBalancesTotal)}</div>
                     <div className="dash-kpi-note">
-                      Across {data.bankAccounts.length} shop bank accounts
+                      Current snapshot: named accounts and unassigned bank receipts
                     </div>
                   </section>
                   <section className="card dash-kpi">
-                    <div className="dash-kpi-head">Shop expenses</div>
+                    <div className="dash-kpi-head">Shop expenses · {periodLabel}</div>
                     <div className="dash-kpi-value" style={{ color: '#b44e4b' }}>
                       {money(data.summary.expensesTotal)}
                     </div>
@@ -122,32 +129,39 @@ export default function DashboardPage({ app }) {
                       <div>
                         <h2>Sales trend</h2>
                         <div className="muted tiny" style={{ marginTop: 4 }}>
-                          Recorded bill totals · last 7 days
+                          Net sales after returns for the selected period
                         </div>
                       </div>
-                      <span className="tag">This week</span>
+                      <span className="tag">{periodLabel}</span>
                     </div>
                     <div className="dash-chart">
                       {(() => {
-                        const today = new Date();
+                                                const keyFor = (value) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(new Date(value));
                         const days = [];
-                        for (let i = 6; i >= 0; i--) {
-                          const d = new Date(today);
-                          d.setDate(today.getDate() - i);
-                          const from = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-                          const to = new Date(from);
-                          to.setDate(to.getDate() + 1);
-                          const dayTotal = data.sales
-                            .filter((b) => {
-                              const dt = new Date(b.createdAt || Date.now());
-                              return dt >= from && dt < to;
-                            })
-                            .reduce((s, b) => s + num(b.total), 0);
-                          days.push({
-                            label: d.toLocaleDateString('en-GB', { weekday: 'short' }),
-                            total: dayTotal,
-                          });
+                        if (dashPeriod === 'all') {
+                          const [year, month] = todayKey.split('-').map(Number);
+                          for (let offset = 11; offset >= 0; offset--) {
+                            const d = new Date(Date.UTC(year, month - 1 - offset, 1, 12));
+                            const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+                            days.push({ key, label: d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }) });
+                          }
+                          for (const bucket of days) {
+                            bucket.total = data.sales.filter((b) => keyFor(b.createdAt).slice(0, 7) === bucket.key).reduce((sum, b) => sum + num(b.total), 0)
+                              - data.customerReturns.filter((r) => keyFor(r.createdAt).slice(0, 7) === bucket.key).reduce((sum, r) => sum + num(r.totalReturnAmount), 0);
+                          }
+                        } else {
+                          const selectedKey = dashPeriod === 'date' ? dashDate : todayKey;
+                          const [year, month, day] = selectedKey.split('-').map(Number);
+                          const count = dashPeriod === 'month' ? Number(todayKey.slice(8, 10)) : 1;
+                          for (let offset = count - 1; offset >= 0; offset--) {
+                            const d = new Date(Date.UTC(year, month - 1, dashPeriod === 'month' ? count - offset : day, 12));
+                            const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+                            const saleTotal = data.sales.filter((b) => keyFor(b.createdAt) === key).reduce((sum, b) => sum + num(b.total), 0);
+                            const returnTotal = data.customerReturns.filter((r) => keyFor(r.createdAt) === key).reduce((sum, r) => sum + num(r.totalReturnAmount), 0);
+                            days.push({ key, label: dashPeriod === 'month' ? String(d.getUTCDate()) : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' }), total: saleTotal - returnTotal });
+                          }
                         }
+                        if (!days.some((item) => item.total > 0)) return <div className="dash-empty">No sales or returns were recorded for {periodLabel.toLowerCase()}.</div>;
                         const max = Math.max(...days.map((x) => x.total), 1);
                         return days.map((x, idx) => (
                           <div key={idx} className="bar-wrap">

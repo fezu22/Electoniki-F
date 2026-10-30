@@ -1,3 +1,4 @@
+import NumericInput from '../../components/NumericInput.jsx';
 import React, { useState } from 'react';
 import { apiRequest, money, num } from '../../api.js';
 
@@ -206,8 +207,8 @@ export default function SuppliersView({
                   </label>
                   <label className="field">
                     Opening payable balance (Rs.)
-                    <input
-                      type="number"
+                    <NumericInput
+                      type="text"
                       min="0"
                       value={openingBalance}
                       onChange={(e) => setOpeningBalance(e.target.value)}
@@ -253,8 +254,8 @@ export default function SuppliersView({
                 <div className="fields">
                   <label className="field">
                     Payment Amount (Rs.)
-                    <input
-                      type="number"
+                    <NumericInput
+                      type="text"
                       min="1"
                       max={paySupplier.balancePayable}
                       required

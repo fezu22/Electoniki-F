@@ -26,7 +26,9 @@ function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? String(value)
-    : date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    : [date.getDate(), date.getMonth() + 1, date.getFullYear()]
+        .map((part, index) => String(part).padStart(index === 2 ? 4 : 2, '0'))
+        .join('-');
 }
 
 /** Shape a persisted app sale and shop settings for the A5 invoice components. */
@@ -47,6 +49,7 @@ export function toInvoiceModel(sale = {}, shop = {}) {
 
   return {
     invoiceNo: sale.invoiceNo || sale.id || '',
+    padNo: String(sale.padNo || '').trim(),
     date: formatDate(sale.createdAt || sale.date),
     customerName: sale.customer || sale.customerName || '',
     customerAddress: sale.address || '',

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { apiRequest, money, num } from '../../api.js';
+import { apiRequest, money } from '../../api.js';
 
-export default function OrdersView({ heldOrders = [], onResumeHeldOrder, onRefresh, notify }) {
+export default function OrdersView({ heldOrders = [], onResumeHeldOrder, onRefresh, notify, showAlert }) {
   const [search, setSearch] = useState('');
 
   const filtered = heldOrders.filter((o) => {
+    if (o.status !== 'Held') return false;
     const q = search.trim().toLowerCase();
     return (
       !q ||
@@ -13,13 +14,16 @@ export default function OrdersView({ heldOrders = [], onResumeHeldOrder, onRefre
     );
   });
 
-  async function updateOrderStatus(order, nextStatus) {
-    await apiRequest(`/orders/${order.id}/status`, {
-      method: 'PUT',
-      body: { status: nextStatus },
+  function deleteOrder(order) {
+    showAlert('Delete held bill?', `${order.orderNo} will be removed from Held Bills. No saved sale or invoice will be changed.`, 'danger', 'Delete held bill', async () => {
+      try {
+        await apiRequest(`/orders/${order.id}`, { method: 'DELETE' });
+        await onRefresh();
+        notify(`Deleted ${order.orderNo}.`);
+      } catch (error) {
+        showAlert('Could not delete held bill', error.message, 'warning');
+      }
     });
-    await onRefresh();
-    notify(`Order ${order.orderNo} updated to ${nextStatus}.`);
   }
 
   return (
@@ -107,7 +111,7 @@ export default function OrdersView({ heldOrders = [], onResumeHeldOrder, onRefre
                     </td>
                     <td>
                       <div className="inline">
-                        {o.status !== 'Completed' && o.status !== 'Cancelled' && (
+                        {o.status === 'Held' && (
                           <button
                             type="button"
                             className="btn small"
@@ -116,19 +120,7 @@ export default function OrdersView({ heldOrders = [], onResumeHeldOrder, onRefre
                             Resume in POS →
                           </button>
                         )}
-                        <select
-                          className="table-input"
-                          style={{ width: 145, height: 31, fontSize: 12 }}
-                          value={o.status}
-                          onChange={(e) => updateOrderStatus(o, e.target.value)}
-                          aria-label={`Status for ${o.orderNo}`}
-                        >
-                          <option value="Held">Held</option>
-                          <option value="Pending Delivery">Pending Delivery</option>
-                          <option value="Partial Delivery">Partial Delivery</option>
-                          <option value="Completed">Completed</option>
-                          <option value="Cancelled">Cancelled</option>
-                        </select>
+                        <button type="button" className="btn danger small" onClick={() => deleteOrder(o)}>Delete</button>
                       </div>
                     </td>
                   </tr>

@@ -1,3 +1,4 @@
+import NumericInput from './components/NumericInput.jsx';
 import NewSalePage from './pages/new-sale/NewSalePage.jsx';
 import DashboardPage from './pages/dashboard/DashboardPage.jsx';
 import InstallmentKhataPage from './pages/installment-khata/InstallmentKhataPage.jsx';
@@ -18,7 +19,7 @@ import {
   Download,
 } from 'lucide-react';
 import { apiRequest, setSessionToken, money, num } from './api.js';
-import { buildWhatsAppInvoiceShare, downloadInvoiceElementPdf } from './utils/pdfGenerator.js';
+import { buildWhatsAppInvoiceShare, createInvoiceElementPdf, downloadInvoiceElementPdf, downloadInvoicePdfBlob } from './utils/pdfGenerator.js';
 import SalesInvoiceA5 from './invoices/SalesInvoiceA5.jsx';
 import InstallmentInvoiceA5 from './invoices/InstallmentInvoiceA5.jsx';
 import { toInvoiceModel } from './invoices/invoiceData.js';
@@ -36,15 +37,6 @@ import ReportsView from './pages/reports/ReportsPage.jsx';
 import SettingsView from './pages/settings/SettingsPage.jsx';
 import OverviewPage from './pages/overview/OverviewPage.jsx';
 import SuperAdminPage from './pages/super-admin/SuperAdminPage.jsx';
-
-const BANK_CARDS = [
-  ['Easypaisa', 'easypaisa'],
-  ['Meezan Bank', 'meezan-bank'],
-  ['Faysal Bank', 'faysal-bank'],
-  ['Allied Bank', 'allied-bank'],
-  ['UBL', 'ubl'],
-  ['HBL', 'hbl'],
-];
 
 const LEGACY_WARRANTY_DEFAULTS = new Set(['12 months', '12 months official']);
 const optionalWarrantyValue = (value) => {
@@ -179,7 +171,7 @@ function InstallmentCustomerDetails({ plan }) {
 const PAGE_GROUPS = [
   { label: 'Customers & Khata', pages: [['customers', 'Customers'], ['khata', 'Installment Khata']] },
   { label: 'Stock & Suppliers', pages: [['stock', 'Stock & Products'], ['suppliers', 'Supplier Accounts']] },
-  { label: 'Finance & Expenses', pages: [['finance', 'Finance & Banks'], ['expenses', 'Shop Expenses'], ['cash-register', 'Cash Register']] },
+  { label: 'Finance & Expenses', pages: [['finance', 'Finance & Banks'], ['expenses', 'Shop Expenses'], ['cash-register', 'Daily Opening & Closing']] },
 ];
 
 export default function App() {
@@ -228,6 +220,7 @@ export default function App() {
   const [salePhone, setSalePhone] = useState('');
   const [saleCnic, setSaleCnic] = useState('');
   const [saleAddress, setSaleAddress] = useState('');
+  const [salePadNo, setSalePadNo] = useState('');
   const [customerInfo, setCustomerInfo] = useState(null);
   const [billDiscount, setBillDiscount] = useState(0);
   const [saleType, setSaleType] = useState('cash');
@@ -236,7 +229,7 @@ export default function App() {
     method: 'cash',
     cash: '0',
     bank: '0',
-    bankName: 'HBL',
+    bankName: '',
     bankAccount: '',
   });
 
@@ -247,9 +240,12 @@ export default function App() {
   const [newPrice, setNewPrice] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [savingSale, setSavingSale] = useState(false);
+  const [resumedHeldOrderId, setResumedHeldOrderId] = useState('');
+  const workspaceRefreshSequence = useRef(0);
 
   // Dashboard date filter
-  const [dashPeriod, setDashPeriod] = useState('all'); // 'all' | 'today' | 'month'
+  const [dashPeriod, setDashPeriod] = useState('all');
+  const [dashDate, setDashDate] = useState(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(new Date()));
 
   // Installment Khata state
   const [khataSearch, setKhataSearch] = useState('');
@@ -289,10 +285,18 @@ export default function App() {
     setSweetAlert({ title, message, type, confirmLabel, onConfirm });
   }
 
-  async function refreshWorkspace(role = data.user?.role) {
-    const boot = await apiRequest(role === 'overview_viewer' ? '/overview' : '/bootstrap');
-    setData(boot);
+  async function refreshWorkspace(role = data.user?.role, period = dashPeriod, date = dashDate) {
+    const requestSequence = ++workspaceRefreshSequence.current;
+    const query = new URLSearchParams({ period, ...(period === 'date' ? { date } : {}) });
+    const boot = await apiRequest(role === 'overview_viewer' ? '/overview' : `/bootstrap?${query}`);
+    if (requestSequence === workspaceRefreshSequence.current) setData(boot);
   }
+
+  useEffect(() => {
+    if (authenticated && data.user?.role !== 'super_admin' && data.user?.role !== 'overview_viewer') {
+      refreshWorkspace(data.user?.role, dashPeriod, dashDate).catch((error) => console.error('Dashboard period refresh failed:', error));
+    }
+  }, [dashPeriod, dashDate]);
 
   async function updateInstallmentReminder(plan, enabled) {
     setSavingReminderSetting(true);
@@ -304,8 +308,8 @@ export default function App() {
       setActiveKhataPlan(res.plan);
       await refreshWorkspace();
       notify(enabled
-        ? 'Monthly WhatsApp reminders enabled. The customer has been recorded as opted in.'
-        : 'Monthly WhatsApp reminders stopped for this plan.');
+        ? 'Daily WhatsApp reminders enabled. The customer has been recorded as opted in.'
+        : 'WhatsApp reminders stopped for this plan.');
     } catch (err) {
       showAlert('Reminder setting not saved', err.message, 'warning');
     } finally {
@@ -490,18 +494,25 @@ export default function App() {
       const res = await apiRequest('/orders', {
         method: 'POST',
         body: {
+          heldOrderId: resumedHeldOrderId || undefined,
           customerId,
           customerName: customerInfo?.name || selectedCustomerObj.name || 'Walk-in customer',
           phone: salePhone || selectedCustomerObj.phone || '',
+          customerInfo: customerInfo || selectedCustomerObj,
+          salePhone,
+          saleCnic,
+          saleAddress,
           saleType,
           cartItems: cart,
           billDiscount,
           plan,
+          salePayment,
           total: finalTotal,
           status: 'Held',
         },
       });
       setCart([]);
+      setResumedHeldOrderId('');
       resetSaleAmounts();
       await refreshWorkspace();
       notify(`Bill held as ${res.order.orderNo}. Resume anytime from Orders & Held Bills.`);
@@ -533,7 +544,8 @@ export default function App() {
       const res = await apiRequest('/sales', {
         method: 'POST',
         body: {
-          idempotencyKey: `sale-${Date.now()}`,
+          idempotencyKey: resumedHeldOrderId ? `sale-held-${resumedHeldOrderId}` : `sale-${Date.now()}`,
+          heldOrderId: resumedHeldOrderId || undefined,
           customerId,
           customerInfo: customerInfo || {
             name: selectedCustomerObj.name || 'Walk-in customer',
@@ -542,6 +554,7 @@ export default function App() {
             cnic: saleCnic || selectedCustomerObj.cnic || '',
             address: saleAddress || selectedCustomerObj.address || '',
           },
+          padNo: salePadNo.trim(),
           saleType,
           items: cart,
           billDiscount,
@@ -550,8 +563,10 @@ export default function App() {
         },
       });
       await refreshWorkspace();
-      setPreviewInvoice(res.sale);
+      setPreviewInvoice({ ...res.sale, padNo: res.sale.padNo || salePadNo.trim() });
       setCart([]);
+      setResumedHeldOrderId('');
+      setSalePadNo('');
       resetSaleAmounts();
       notify(`Sale ${res.sale.invoiceNo} saved!`);
     } catch (err) {
@@ -565,9 +580,12 @@ export default function App() {
     const fileName = `${bill.invoiceNo || bill.id || 'invoice'}.pdf`;
     try {
       const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-preview-host');
-      await downloadInvoiceElementPdf(invoiceElement, fileName);
+      const pdf = await createInvoiceElementPdf(invoiceElement, fileName);
       const share = buildWhatsAppInvoiceShare(bill, data.shop);
-      setWhatsAppShareInfo({ bill, fileName, ...share });
+      const file = typeof File === 'undefined' ? null : new File([pdf.blob], fileName, { type: 'application/pdf' });
+      const supportsFileShare = Boolean(file && navigator.share && navigator.canShare?.({ files: [file] }));
+      if (!supportsFileShare) downloadInvoicePdfBlob(pdf.blob, fileName);
+      setWhatsAppShareInfo({ bill, fileName, blob: pdf.blob, file, supportsFileShare, ...share });
     } catch (error) {
       showAlert('Could not create invoice PDF', error?.message || 'Please try again.', 'warning');
     }
@@ -593,10 +611,22 @@ export default function App() {
 
   async function downloadSharedInvoiceAgain() {
     try {
-      const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-preview-host');
-      await downloadInvoiceElementPdf(invoiceElement, whatsAppShareInfo?.fileName || 'invoice.pdf');
+      if (whatsAppShareInfo?.blob) downloadInvoicePdfBlob(whatsAppShareInfo.blob, whatsAppShareInfo.fileName || 'invoice.pdf');
+      else {
+        const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-preview-host');
+        await downloadInvoiceElementPdf(invoiceElement, whatsAppShareInfo?.fileName || 'invoice.pdf');
+      }
     } catch (error) {
       showAlert('Could not create invoice PDF', error?.message || 'Please try again.', 'warning');
+    }
+  }
+
+  async function shareInvoicePdf() {
+    if (!whatsAppShareInfo?.file || !navigator.share) return;
+    try {
+      await navigator.share({ files: [whatsAppShareInfo.file], title: `Invoice ${whatsAppShareInfo.bill?.invoiceNo || ''}`, text: whatsAppShareInfo.text });
+    } catch (error) {
+      if (error?.name !== 'AbortError') showAlert('Could not share invoice', error?.message || 'Download the PDF and attach it manually in WhatsApp.', 'warning');
     }
   }
 
@@ -657,8 +687,8 @@ export default function App() {
     group.pages.some(([pageKey]) => pageKey === page)
   );
 
-  const newSalePageContext = { BANK_CARDS, data, page, cart, setCart, customerId, setCustomerId, salePhone, setSalePhone, saleCnic, setSaleCnic, saleAddress, setSaleAddress, customerInfo, setCustomerInfo, billDiscount, setBillDiscount, saleType, setSaleType, plan, setPlan, salePayment, setSalePayment, productSearch, setProductSearch, setSelectedSearchProductId, newQty, setNewQty, newPrice, setNewPrice, showSuggestions, setShowSuggestions, savingSale, setShowInstallmentCustomerModal, setShowNewCustomerModal, setEditingCustomerRecord, showAlert, gross, appliedDiscount, discounted, add, finalTotal, resetSaleAmounts, cashRec, advanceOrPaid, remainingBalance, excessPayment, monthlyInstallment, handleAddItemToCart, updateCartItemField, handleHoldBill, handleSaveSale, dateText, matchingSearchProducts };
-  const dashboardPageContext = { data, page, setPage, dashPeriod, setDashPeriod };
+  const newSalePageContext = { data, page, cart, setCart, customerId, setCustomerId, salePhone, setSalePhone, saleCnic, setSaleCnic, saleAddress, setSaleAddress, salePadNo, setSalePadNo, customerInfo, setCustomerInfo, billDiscount, setBillDiscount, saleType, setSaleType, plan, setPlan, salePayment, setSalePayment, resumedHeldOrderId, setResumedHeldOrderId, productSearch, setProductSearch, setSelectedSearchProductId, newQty, setNewQty, newPrice, setNewPrice, showSuggestions, setShowSuggestions, savingSale, setShowInstallmentCustomerModal, setShowNewCustomerModal, setEditingCustomerRecord, showAlert, gross, appliedDiscount, discounted, add, finalTotal, resetSaleAmounts, cashRec, advanceOrPaid, remainingBalance, excessPayment, monthlyInstallment, handleAddItemToCart, updateCartItemField, handleHoldBill, handleSaveSale, dateText, matchingSearchProducts };
+  const dashboardPageContext = { data, page, setPage, dashPeriod, setDashPeriod, dashDate, setDashDate, showAlert };
   const installmentKhataPageContext = { data, page, plan, khataSearch, setKhataSearch, setShowAddInstallmentModal, setActiveKhataPlan, setKhataPayAmount, dateText };
   const stockProductsPageContext = { optionalWarrantyValue, data, page, setPage, inventorySearch, setInventorySearch, inventoryChip, setInventoryChip, stockTab, setStockTab, setEditingProduct, setShowProductModal };
   return (
@@ -910,6 +940,7 @@ export default function App() {
             {page === 'bills' && (
               <BillsView
                 sales={data.sales}
+                installmentPlans={data.installmentPlans}
                 shop={data.shop}
                 onOpenInvoice={(b, onReceiveDue) => setPreviewInvoice({ ...b, onReceiveDue })}
                 onNewSale={() => setPage('sale')}
@@ -949,20 +980,28 @@ export default function App() {
             {page === 'orders' && (
               <OrdersView
                 heldOrders={data.heldOrders}
-                onResumeHeldOrder={async (order) => {
-                  setCart(order.cartItems || []);
-                  setCustomerId(order.customerId || 'walkin');
-                  resetSaleAmounts();
-                  setBillDiscount(num(order.billDiscount));
-                  setSaleType(order.saleType || 'cash');
-                  if (order.plan) setPlan(order.plan);
-                  await apiRequest(`/orders/${order.id}`, { method: 'DELETE' });
-                  await refreshWorkspace();
-                  setPage('sale');
-                  notify(`Resumed ${order.orderNo} into Current Cart.`);
+                onResumeHeldOrder={(order) => {
+                  const restore = () => {
+                    setCart(order.cartItems || []);
+                    setCustomerId(order.customerId || 'walkin');
+                    setSalePhone(order.salePhone || order.phone || '');
+                    setSaleCnic(order.saleCnic || order.customerInfo?.cnic || '');
+                    setSaleAddress(order.saleAddress || order.customerInfo?.address || '');
+                    setCustomerInfo(order.customerInfo || null);
+                    setBillDiscount(num(order.billDiscount));
+                    setSaleType(order.saleType || 'cash');
+                    if (order.plan) setPlan(order.plan);
+                    setSalePayment(order.salePayment || { method: 'cash', cash: '0', bank: '0', bankName: '', bankAccount: '' });
+                    setResumedHeldOrderId(order.id);
+                    setPage('sale');
+                    notify(`Resumed ${order.orderNo} into Current Cart. The held bill will be removed after the sale saves.`);
+                  };
+                  if (cart.length) showAlert('Replace the current cart?', 'Resuming this bill will replace the unsaved items currently in POS.', 'warning', 'Replace cart', restore);
+                  else restore();
                 }}
                 onRefresh={refreshWorkspace}
                 notify={notify}
+                showAlert={showAlert}
               />
             )}
 
@@ -1002,6 +1041,7 @@ export default function App() {
 
             {page === 'cash-register' && (
               <CashRegisterPage
+                data={data}
                 onRefresh={refreshWorkspace}
                 notify={notify}
                 showAlert={showAlert}
@@ -1464,15 +1504,15 @@ export default function App() {
                   </label>
                   <label className="field">
                     Total plan amount (Rs.)
-                    <input name="total" type="number" min="1" required placeholder="0" />
+                    <NumericInput name="total" type="text" min="1" required placeholder="0" />
                   </label>
                   <label className="field">
                     Advance payment (Rs.)
-                    <input name="advance" type="number" min="0" defaultValue="0" />
+                    <NumericInput name="advance" type="text" min="0" defaultValue="0" />
                   </label>
                   <label className="field">
                     Duration (months)
-                    <input name="months" type="number" min="1" defaultValue="12" required />
+                    <NumericInput name="months" type="text" min="1" step="1" defaultValue="12" required />
                   </label>
                 </div>
               </div>
@@ -1541,7 +1581,7 @@ export default function App() {
                       <b>Customer agreed to monthly WhatsApp reminders</b>
                       <small style={{ display: 'block', marginTop: 4 }}>
                         {data.shop?.whatsappAutomationConfigured
-                          ? 'When enabled in Settings, a reminder is sent on or after the due date each month until this plan is paid or you turn this off.'
+                          ? 'When enabled in Settings, a reminder is sent daily at 8:00 AM after the due date until a payment is recorded in Khata, this plan is paid, or you turn reminders off.'
                           : 'Save the WhatsApp Cloud API credentials and approved reminder template on the backend before messages can be sent.'}
                       </small>
                     </span>
@@ -1600,8 +1640,8 @@ export default function App() {
                   <div className="fields">
                     <label className="field">
                       Payment Amount (Rs.)
-                      <input
-                        type="number"
+                      <NumericInput
+                        type="text"
                         min="1"
                         max={activeKhataPlan.balance}
                         required
@@ -1815,9 +1855,9 @@ export default function App() {
                   </label>
                   <label className="field">
                     Purchase Cost Price (Rs.)
-                    <input
+                    <NumericInput
                       name="cost"
-                      type="number"
+                      type="text"
                       min="0"
                       required
                       defaultValue={editingProduct?.cost ?? 0}
@@ -1825,9 +1865,9 @@ export default function App() {
                   </label>
                   <label className="field">
                     Sale Price (Rs.)
-                    <input
+                    <NumericInput
                       name="price"
-                      type="number"
+                      type="text"
                       min="1"
                       required
                       defaultValue={editingProduct?.price ?? ''}
@@ -1835,20 +1875,22 @@ export default function App() {
                   </label>
                   <label className="field">
                     Quantity in Stock
-                    <input
+                    <NumericInput
                       name="stock"
-                      type="number"
+                      type="text"
                       min="0"
+                      step="1"
                       required
                       defaultValue={editingProduct?.stock ?? 0}
                     />
                   </label>
                   <label className="field">
                     Low-Stock Reorder Threshold
-                    <input
+                    <NumericInput
                       name="reorderThreshold"
-                      type="number"
+                      type="text"
                       min="0"
+                      step="1"
                       defaultValue={editingProduct?.reorderThreshold ?? 5}
                     />
                   </label>
@@ -1966,7 +2008,7 @@ export default function App() {
             </div>
             <div className="modal-body">
               <div className="modal-note" style={{ marginTop: 0 }}>
-                A5 invoice PDF <b>{whatsAppShareInfo.fileName}</b> has been downloaded. Open WhatsApp below and attach that downloaded file to the chat. Browsers do not allow this app to attach local files to WhatsApp automatically.
+                A5 invoice PDF <b>{whatsAppShareInfo.fileName}</b> is ready. {whatsAppShareInfo.supportsFileShare ? 'Use the button below to share the PDF and invoice message together. Choose WhatsApp, select the customer, then confirm Send in WhatsApp.' : 'This browser cannot attach files to WhatsApp directly. The PDF has been downloaded; open WhatsApp and attach it manually before sending.'} {whatsAppShareInfo.targetPhone ? '' : 'No customer WhatsApp number is saved, so choose the customer in WhatsApp.'}
               </div>
 
               <label className="field" style={{ marginTop: 14 }}>
@@ -1987,17 +2029,18 @@ export default function App() {
                 className="btn secondary"
                 onClick={downloadSharedInvoiceAgain}
               >
-                Download A5 PDF Again
+                Download A5 PDF
               </button>
-              <a
+              {whatsAppShareInfo.supportsFileShare && <button type="button" className="btn" onClick={shareInvoicePdf}>Share PDF + Message</button>}
+              {!whatsAppShareInfo.supportsFileShare && <a
                 href={whatsAppShareInfo.waUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn"
                 style={{ textDecoration: 'none' }}
               >
-                Open WhatsApp (wa.me) ↗
-              </a>
+                Open WhatsApp to attach PDF ↗
+              </a>}
             </div>
           </div>
         </div>

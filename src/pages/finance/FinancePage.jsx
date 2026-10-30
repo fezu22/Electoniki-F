@@ -1,3 +1,4 @@
+import NumericInput from '../../components/NumericInput.jsx';
 import React, { useState } from 'react';
 import { apiRequest, money, num } from '../../api.js';
 
@@ -232,7 +233,7 @@ export default function FinanceView({
                   <label className="field">
                     Opening Balance (Rs.)
                     <input
-                      type="number"
+                      type="text"
                       value={openingBalance}
                       onChange={(e) => setOpeningBalance(e.target.value)}
                     />

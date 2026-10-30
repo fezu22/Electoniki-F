@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import NumericInput from '../../components/NumericInput.jsx';
+import React, { useRef, useState } from 'react';
 import { apiRequest, money, num } from '../../api.js';
 
 export default function ReturnsView({
@@ -16,9 +17,34 @@ export default function ReturnsView({
   const [refundMethod, setRefundMethod] = useState('cash');
   const [bankName, setBankName] = useState('HBL');
   const [search, setSearch] = useState('');
+  const [invoiceQuery, setInvoiceQuery] = useState('');
+  const [invoiceListOpen, setInvoiceListOpen] = useState(false);
+  const [activeInvoiceIndex, setActiveInvoiceIndex] = useState(0);
+  const [submittingReturn, setSubmittingReturn] = useState(false);
+  const [returnRequestKey, setReturnRequestKey] = useState('');
+  const invoiceInputRef = useRef(null);
 
   const selectedBill = sales.find((b) => b.invoiceNo === selectedInvoiceNo);
   const priorForBill = customerReturns.filter((r) => r.invoiceNo === selectedInvoiceNo);
+  const matchingInvoices = sales.filter((bill) => {
+    const query = invoiceQuery.trim().toLowerCase();
+    const hasEligible = (bill.items || []).some((item) => {
+      const already = customerReturns.filter((r) => r.invoiceNo === bill.invoiceNo)
+        .flatMap((r) => r.items || [])
+        .filter((returned) => (item.productId && String(returned.productId) === String(item.productId)) || String(returned.name).toLowerCase() === String(item.name).toLowerCase())
+        .reduce((sum, returned) => sum + num(returned.qty), 0);
+      return num(item.qty) > already;
+    });
+    return hasEligible && (!query || String(bill.invoiceNo || '').toLowerCase().includes(query) || String(bill.customer || '').toLowerCase().includes(query));
+  });
+
+  function chooseInvoice(bill) {
+    setSelectedInvoiceNo(bill.invoiceNo);
+    setInvoiceQuery(`${bill.invoiceNo} — ${bill.customer || 'Walk-in customer'}`);
+    setReturnQuantities({});
+    setInvoiceListOpen(false);
+    setActiveInvoiceIndex(0);
+  }
 
   function getAlreadyReturned(productId, name) {
     let sum = 0;
@@ -37,6 +63,7 @@ export default function ReturnsView({
 
   async function handleSubmitReturn(e) {
     e.preventDefault();
+    if (submittingReturn) return;
     if (!selectedBill) {
       showAlert('Select invoice', 'Choose an original sale invoice first.', 'warning');
       return;
@@ -60,10 +87,14 @@ export default function ReturnsView({
       return;
     }
 
+    setSubmittingReturn(true);
+    const idempotencyKey = returnRequestKey || `return-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+    setReturnRequestKey(idempotencyKey);
     try {
       await apiRequest('/returns', {
         method: 'POST',
         body: {
+          idempotencyKey,
           invoiceNo: selectedBill.invoiceNo,
           saleId: selectedBill.id,
           items: itemsToReturn,
@@ -74,11 +105,15 @@ export default function ReturnsView({
       });
       setShowModal(false);
       setSelectedInvoiceNo('');
+      setInvoiceQuery('');
       setReturnQuantities({});
+      setReturnRequestKey('');
       await onRefresh();
       notify('Customer return processed and inventory restored.');
     } catch (err) {
       showAlert('Cannot process return', err.message, 'warning');
+    } finally {
+      setSubmittingReturn(false);
     }
   }
 
@@ -103,9 +138,11 @@ export default function ReturnsView({
             type="button"
             className="btn"
             onClick={() => {
-              if (sales.length > 0 && !selectedInvoiceNo) {
-                setSelectedInvoiceNo(sales[0].invoiceNo);
-              }
+              setInvoiceQuery('');
+              setSelectedInvoiceNo('');
+              setReturnQuantities({});
+              setReturnRequestKey(`return-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`);
+              setInvoiceListOpen(false);
               setShowModal(true);
             }}
           >
@@ -206,20 +243,38 @@ export default function ReturnsView({
                 <div className="fields">
                   <label className="field full">
                     Original Sale Invoice
-                    <select
-                      value={selectedInvoiceNo}
-                      onChange={(e) => {
-                        setSelectedInvoiceNo(e.target.value);
-                        setReturnQuantities({});
-                      }}
-                    >
-                      <option value="">-- Select Invoice --</option>
-                      {sales.map((b) => (
-                        <option key={b.id} value={b.invoiceNo}>
-                          {b.invoiceNo} · {b.customer} · {money(b.total)}
-                        </option>
-                      ))}
-                    </select>
+                                        <div className="invoice-search-select">
+                      <input
+                        ref={invoiceInputRef}
+                        role="combobox"
+                        aria-expanded={invoiceListOpen}
+                        aria-controls="return-invoice-results"
+                        aria-autocomplete="list"
+                        placeholder="Search invoice number or customer"
+                        value={invoiceQuery}
+                        onFocus={() => setInvoiceListOpen(true)}
+                        onChange={(event) => {
+                          setInvoiceQuery(event.target.value);
+                          setSelectedInvoiceNo('');
+                          setReturnQuantities({});
+                          setInvoiceListOpen(true);
+                          setActiveInvoiceIndex(0);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'ArrowDown') { event.preventDefault(); setInvoiceListOpen(true); setActiveInvoiceIndex((index) => Math.min(index + 1, Math.max(0, matchingInvoices.length - 1))); }
+                          if (event.key === 'ArrowUp') { event.preventDefault(); setActiveInvoiceIndex((index) => Math.max(0, index - 1)); }
+                          if (event.key === 'Enter' && invoiceListOpen && matchingInvoices[activeInvoiceIndex]) { event.preventDefault(); chooseInvoice(matchingInvoices[activeInvoiceIndex]); }
+                          if (event.key === 'Escape') setInvoiceListOpen(false);
+                        }}
+                      />
+                      {invoiceListOpen && <div className="invoice-search-results" id="return-invoice-results" role="listbox">
+                        {matchingInvoices.length ? matchingInvoices.map((bill, index) => (
+                          <button key={bill.id} type="button" role="option" aria-selected={index === activeInvoiceIndex} className={index === activeInvoiceIndex ? 'active' : ''} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseInvoice(bill)}>
+                            <span><b>{bill.invoiceNo}</b><small>{bill.customer || 'Walk-in customer'}</small></span><strong>{money(bill.total)}</strong>
+                          </button>
+                        )) : <div className="invoice-search-empty">No matching invoices</div>}
+                      </div>}
+                    </div>
                   </label>
                 </div>
 
@@ -253,12 +308,13 @@ export default function ReturnsView({
                                   <b>{eligible}</b>
                                 </td>
                                 <td>
-                                  <input
-                                    type="number"
+                                  <NumericInput
+                                    type="text"
                                     min="0"
+                                    step="1"
                                     max={eligible}
                                     disabled={eligible === 0}
-                                    value={returnQuantities[key] ?? 0}
+                                    value={returnQuantities[key] ?? ''}
                                     onChange={(e) =>
                                       setReturnQuantities({
                                         ...returnQuantities,
@@ -322,8 +378,8 @@ export default function ReturnsView({
                 <button type="button" className="btn ghost" onClick={() => setShowModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn">
-                  Confirm Return & Update Stock
+                <button type="submit" className="btn" disabled={submittingReturn}>
+                  {submittingReturn ? 'Processing…' : 'Confirm Return & Update Stock'}
                 </button>
               </div>
             </form>

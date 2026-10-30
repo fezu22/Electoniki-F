@@ -1,3 +1,4 @@
+import NumericInput from '../../components/NumericInput.jsx';
 import React, { useState } from 'react';
 import { apiRequest, money, num } from '../../api.js';
 
@@ -233,8 +234,8 @@ export default function ChequesView({ cheques = [], onRefresh, notify, showAlert
                   </label>
                   <label className="field">
                     Amount (Rs.)
-                    <input
-                      type="number"
+                    <NumericInput
+                      type="text"
                       min="1"
                       required
                       value={amount}

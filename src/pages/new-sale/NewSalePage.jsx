@@ -1,3 +1,4 @@
+import NumericInput from '../../components/NumericInput.jsx';
 import React from 'react';
 import {
   LayoutDashboard,
@@ -16,7 +17,7 @@ import {
 import { apiRequest, money, num } from '../../api.js';
 
 export default function NewSalePage({ app }) {
-  const { BANK_CARDS, data, page, cart, setCart, customerId, setCustomerId, salePhone, setSalePhone, saleCnic, setSaleCnic, saleAddress, setSaleAddress, customerInfo, setCustomerInfo, billDiscount, setBillDiscount, saleType, setSaleType, plan, setPlan, salePayment, setSalePayment, productSearch, setProductSearch, setSelectedSearchProductId, newQty, setNewQty, newPrice, setNewPrice, showSuggestions, setShowSuggestions, savingSale, setShowInstallmentCustomerModal, setShowNewCustomerModal, setEditingCustomerRecord, showAlert, gross, appliedDiscount, discounted, add, finalTotal, resetSaleAmounts, cashRec, advanceOrPaid, remainingBalance, excessPayment, monthlyInstallment, handleAddItemToCart, updateCartItemField, handleHoldBill, handleSaveSale, dateText, matchingSearchProducts } = app;
+  const { data, page, cart, setCart, setResumedHeldOrderId, customerId, setCustomerId, salePhone, setSalePhone, saleCnic, setSaleCnic, saleAddress, setSaleAddress, salePadNo, setSalePadNo, customerInfo, setCustomerInfo, billDiscount, setBillDiscount, saleType, setSaleType, plan, setPlan, salePayment, setSalePayment, productSearch, setProductSearch, setSelectedSearchProductId, newQty, setNewQty, newPrice, setNewPrice, showSuggestions, setShowSuggestions, savingSale, setShowInstallmentCustomerModal, setShowNewCustomerModal, setEditingCustomerRecord, showAlert, gross, appliedDiscount, discounted, add, finalTotal, resetSaleAmounts, cashRec, advanceOrPaid, remainingBalance, excessPayment, monthlyInstallment, handleAddItemToCart, updateCartItemField, handleHoldBill, handleSaveSale, dateText, matchingSearchProducts } = app;
   return (
               <>
                 <div className="page-head">
@@ -97,6 +98,10 @@ export default function NewSalePage({ app }) {
                             onChange={(e) => setSaleAddress(e.target.value)}
                             placeholder="Customer address"
                           />
+                        </label>
+                        <label className="field">
+                          Pad No. <span style={{ color: '#788995', fontWeight: 500 }}>(optional, printed on invoice)</span>
+                          <input id="salePadNo" value={salePadNo} onChange={(e) => setSalePadNo(e.target.value)} maxLength={40} placeholder="e.g. 1095" />
                         </label>
                       </div>
 
@@ -195,17 +200,18 @@ export default function NewSalePage({ app }) {
                         <div className="product-entry-row">
                           <label className="field">
                             Quantity
-                            <input
-                              type="number"
+                            <NumericInput
+                              type="text"
                               min="1"
+                              step="1"
                               value={newQty}
                               onChange={(e) => setNewQty(e.target.value)}
                             />
                           </label>
                           <label className="field">
                             Price (Rs.)
-                            <input
-                              type="number"
+                            <NumericInput
+                              type="text"
                               min="0"
                               value={newPrice}
                               onChange={(e) => setNewPrice(e.target.value)}
@@ -281,52 +287,24 @@ export default function NewSalePage({ app }) {
                           {salePayment.method === 'cash' && (
                             <label className="field">
                               Amount Paid (Rs.)
-                              <input
-                                type="number"
-                                min="0"
-                                value={salePayment.cash}
-                                max={finalTotal}
-                                onChange={(e) => setSalePayment((current) => ({ ...current, cash: e.target.value }))}
-                                placeholder="0.00"
-                              />
+                              <span className="payment-full-amount">
+                                <NumericInput type="text" min="0" value={salePayment.cash} max={finalTotal} onChange={(e) => setSalePayment((current) => ({ ...current, cash: e.target.value }))} placeholder="0.00" />
+                                <button type="button" className="btn ghost small" onClick={() => setSalePayment((current) => ({ ...current, cash: String(finalTotal) }))}>Pay Full Amount</button>
+                              </span>
                             </label>
                           )}
 
                           {salePayment.method === 'bank' && (
                             <div className="payment-bank-grid">
-                              <div className="bank-options" role="group" aria-label="Bank accounts">
-                                {BANK_CARDS.map(([name, logo]) => (
-                                  <button
-                                    key={name}
-                                    type="button"
-                                    className={`bank-option ${
-                                      salePayment.bankName === name ? 'selected' : ''
-                                    }`}
-                                    onClick={() => setSalePayment((current) => ({ ...current, bankName: name }))}
-                                  >
-                                    <img
-                                      className="bank-logo"
-                                      src={`/assets/payment-banks/${logo}.png`}
-                                      alt={`${name} logo`}
-                                    />
-                                    <span>{name}</span>
-                                  </button>
-                                ))}
-                              </div>
                               <div className="fields">
                                 <label className="field">
-                                  Amount Paid · {salePayment.bankName || 'Bank'} (Rs.)
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={salePayment.bank}
-                                    max={finalTotal}
-                                    onChange={(e) => setSalePayment((current) => ({ ...current, bank: e.target.value }))}
-                                    placeholder="0.00"
-                                  />
+                                  Amount Paid by Bank (Rs.)
+                                  <span className="payment-full-amount">
+                                    <NumericInput type="text" min="0" value={salePayment.bank} max={finalTotal} onChange={(e) => setSalePayment((current) => ({ ...current, bank: e.target.value }))} placeholder="0.00" />
+                                    <button type="button" className="btn ghost small" onClick={() => setSalePayment((current) => ({ ...current, bank: String(finalTotal) }))}>Pay Full Amount</button>
+                                  </span>
                                 </label>
-                                <label className="field">
-                                  Account / reference (optional)
+                                <label className="field">Bank account (optional)<select value={salePayment.bankName || ''} onChange={(e) => setSalePayment((current) => ({ ...current, bankName: e.target.value }))}><option value="">Unassigned bank payment</option>{(data.bankAccounts || []).filter((account) => account.active !== false).map((account) => <option key={account.id} value={account.bankName}>{account.bankName}</option>)}</select></label><label className="field">Transaction reference (optional)
                                   <input
                                     value={salePayment.bankAccount}
                                     onChange={(e) => setSalePayment((current) => ({ ...current, bankAccount: e.target.value }))}
@@ -383,9 +361,10 @@ export default function NewSalePage({ app }) {
                             <div className="cart-fields">
                               <label className="mini-field">
                                 Qty
-                                <input
-                                  type="number"
+                                <NumericInput
+                                  type="text"
                                   min="1"
+                                  step="1"
                                   value={item.qty}
                                   onChange={(e) =>
                                     updateCartItemField(idx, 'qty', e.target.value)
@@ -394,8 +373,8 @@ export default function NewSalePage({ app }) {
                               </label>
                               <label className="mini-field">
                                 Rate (Rs.)
-                                <input
-                                  type="number"
+                                <NumericInput
+                                  type="text"
                                   min="0"
                                   value={item.price}
                                   onChange={(e) =>
@@ -422,9 +401,9 @@ export default function NewSalePage({ app }) {
                     <div className="discount-band">
                       <div className="discount-row">
                         <label htmlFor="billDiscount">Discount (Rs.)</label>
-                        <input
+                        <NumericInput
                           id="billDiscount"
-                          type="number"
+                          type="text"
                           min="0"
                           value={billDiscount}
                           onChange={(e) => setBillDiscount(num(e.target.value))}
@@ -461,8 +440,8 @@ export default function NewSalePage({ app }) {
                         <div className="fields">
                           <label className="field">
                             Installment percentage (%)
-                            <input
-                              type="number"
+                            <NumericInput
+                              type="text"
                               min="0"
                               step="0.1"
                               value={plan.percent}
@@ -473,8 +452,8 @@ export default function NewSalePage({ app }) {
                           </label>
                           <label className="field">
                             Advance payment (Rs.)
-                            <input
-                              type="number"
+                            <NumericInput
+                              type="text"
                               min="0"
                               value={plan.advance}
                               onChange={(e) =>
@@ -484,8 +463,8 @@ export default function NewSalePage({ app }) {
                           </label>
                           <label className="field">
                             Duration (months)
-                            <input
-                              type="number"
+                            <NumericInput
+                              type="text"
                               min="1"
                               step="1"
                               value={plan.months}
@@ -540,12 +519,7 @@ export default function NewSalePage({ app }) {
                       </div>
                     </div>
 
-                    <div className="grand">
-                      <span>
-                        {saleType === 'installment' ? 'FINAL INSTALLMENT PRICE' : 'AMOUNT DUE'}
-                      </span>
-                      <strong>{money(finalTotal)}</strong>
-                    </div>
+                    <div className="summary"><div className="summary-row emph"><span>Invoice Total</span><strong>{money(finalTotal)}</strong></div><div className="summary-row"><span>Amount Paid</span><strong>{money(advanceOrPaid)}</strong></div><div className="grand"><span>Remaining Due</span><strong>{money(remainingBalance)}</strong></div></div>
 
                     {saleType === 'installment' && customerInfo && (
                       <div className="plan-stats" style={{ marginTop: 11 }}>
@@ -583,6 +557,7 @@ export default function NewSalePage({ app }) {
                             'Yes, clear cart',
                             () => {
                               setCart([]);
+                              setResumedHeldOrderId('');
                               resetSaleAmounts();
                             }
                           );
