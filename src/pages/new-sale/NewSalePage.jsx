@@ -243,7 +243,7 @@ export default function NewSalePage({ app }) {
                           </div>
                           <div>
                             <small>Amount Paid</small>
-                            <b>{money(cashRec)}</b>
+                            <b>{money(advanceOrPaid)}</b>
                           </div>
                           <div>
                             <small>Remaining Customer Balance</small>
@@ -269,9 +269,7 @@ export default function NewSalePage({ app }) {
                                   name="sale-payment-method"
                                   value={val}
                                   checked={salePayment.method === val}
-                                  onChange={() =>
-                                    setSalePayment({ ...salePayment, method: val })
-                                  }
+                                  onChange={() => setSalePayment((current) => ({ ...current, method: val }))}
                                 />
                                 <span>{label}</span>
                               </label>
@@ -287,9 +285,8 @@ export default function NewSalePage({ app }) {
                                 type="number"
                                 min="0"
                                 value={salePayment.cash}
-                                onChange={(e) =>
-                                  setSalePayment({ ...salePayment, cash: e.target.value })
-                                }
+                                max={finalTotal}
+                                onChange={(e) => setSalePayment((current) => ({ ...current, cash: e.target.value }))}
                                 placeholder="0.00"
                               />
                             </label>
@@ -305,9 +302,7 @@ export default function NewSalePage({ app }) {
                                     className={`bank-option ${
                                       salePayment.bankName === name ? 'selected' : ''
                                     }`}
-                                    onClick={() =>
-                                      setSalePayment({ ...salePayment, bankName: name })
-                                    }
+                                    onClick={() => setSalePayment((current) => ({ ...current, bankName: name }))}
                                   >
                                     <img
                                       className="bank-logo"
@@ -325,9 +320,8 @@ export default function NewSalePage({ app }) {
                                     type="number"
                                     min="0"
                                     value={salePayment.bank}
-                                    onChange={(e) =>
-                                      setSalePayment({ ...salePayment, bank: e.target.value })
-                                    }
+                                    max={finalTotal}
+                                    onChange={(e) => setSalePayment((current) => ({ ...current, bank: e.target.value }))}
                                     placeholder="0.00"
                                   />
                                 </label>
@@ -335,12 +329,7 @@ export default function NewSalePage({ app }) {
                                   Account / reference (optional)
                                   <input
                                     value={salePayment.bankAccount}
-                                    onChange={(e) =>
-                                      setSalePayment({
-                                        ...salePayment,
-                                        bankAccount: e.target.value,
-                                      })
-                                    }
+                                    onChange={(e) => setSalePayment((current) => ({ ...current, bankAccount: e.target.value }))}
                                     placeholder="Account or transaction reference"
                                   />
                                 </label>

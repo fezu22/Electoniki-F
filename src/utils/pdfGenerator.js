@@ -2,18 +2,25 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { money, num } from '../api.js';
 
-/** Capture the actual A5 invoice component and download it as a one-page PDF. */
+/** Capture every A5 invoice page and download them together as a PDF. */
 export async function downloadInvoiceElementPdf(element, fileName) {
   if (!element) throw new Error('Invoice preview is not available. Open the invoice and try again.');
-
-  const canvas = await html2canvas(element, {
-    backgroundColor: '#ffffff',
-    scale: 2.5,
-    useCORS: true,
-    logging: false,
-  });
+  const pages = element.matches?.('.ci-page') ? [element] : [...element.querySelectorAll('.ci-page')];
+  if (!pages.length) throw new Error('Invoice pages are not available. Open the invoice and try again.');
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [148, 210], compress: true });
-  doc.addImage(canvas.toDataURL('image/jpeg', 0.96), 'JPEG', 0, 0, 148, 210, undefined, 'FAST');
+  for (const [index, page] of pages.entries()) {
+    await Promise.all([...page.querySelectorAll('img')].map((image) =>
+      image.decode ? image.decode().catch(() => undefined) : Promise.resolve()
+    ));
+    const canvas = await html2canvas(page, {
+      backgroundColor: '#ffffff',
+      scale: 2.5,
+      useCORS: true,
+      logging: false,
+    });
+    if (index > 0) doc.addPage([148, 210], 'portrait');
+    doc.addImage(canvas.toDataURL('image/jpeg', 0.96), 'JPEG', 0, 0, 148, 210, undefined, 'FAST');
+  }
   doc.save(fileName);
   return fileName;
 }

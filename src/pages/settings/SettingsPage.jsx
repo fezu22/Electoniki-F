@@ -62,7 +62,7 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
         },
       });
       await onRefresh();
-      notify('Shop settings and WhatsApp number saved.');
+      notify('Shop settings saved.');
     } catch (err) {
       showAlert('Error saving settings', err.message, 'warning');
     } finally {
@@ -157,7 +157,7 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 0.85fr)', alignItems: 'start' }}>
         <section className="card">
           <div className="card-head">
-            <h2>Shop Profile & Invoice Preferences</h2>
+            <h2>Shop Profile & Receipt Details</h2>
             <span className="tag">{shop.currency || 'PKR'}</span>
           </div>
 
@@ -210,6 +210,38 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
                   placeholder="Main Electronics Market, Mingora, Swat"
                 />
               </label>
+              {/* Invoice design is managed by Super Admin. */}
+              {/*
+              <div className="field full" style={{ padding: 16, border: '1px solid #dbe7ed', borderRadius: 12, background: '#f7fbfd' }}>
+                <b style={{ color: '#12303f' }}>Invoice Design · This Store Only</b>
+                <p className="muted tiny" style={{ margin: '5px 0 12px' }}>
+                  Each store saves its own invoice colors and logo. All accounts in this store use the same invoice design.
+                </p>
+                <div className="fields">
+                  <label className="field">
+                    Invoice theme
+                    <select disabled={!isOwner} value={invoiceTheme} onChange={(e) => { setInvoiceTheme(e.target.value); setInvoiceAccent(INVOICE_THEMES[e.target.value] || INVOICE_THEMES.blue); }}>
+                      <option value="blue">Classic Blue</option>
+                      <option value="teal">Teal</option>
+                      <option value="violet">Violet</option>
+                      <option value="graphite">Graphite</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    Accent color
+                    <input type="color" disabled={!isOwner} value={invoiceAccent} onChange={(e) => setInvoiceAccent(e.target.value)} style={{ width: 76, height: 40, padding: 3 }} />
+                  </label>
+                  <label className="field full">
+                    Shop logo (printed on Sales and Installment invoices, max 240 KB)
+                    <input type="file" accept="image/png,image/jpeg,image/webp" disabled={!isOwner} onChange={handleInvoiceLogoChange} />
+                  </label>
+                  {invoiceLogo && <div className="field full" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <img src={invoiceLogo} alt="Invoice logo preview" style={{ maxWidth: 160, maxHeight: 64, objectFit: 'contain', background: '#fff', border: '1px solid #dbe7ed', borderRadius: 8, padding: 5 }} />
+                    {isOwner && <button type="button" className="btn ghost small" onClick={() => setInvoiceLogo('')}>Remove logo</button>}
+                  </div>}
+                </div>
+              </div>
+              */}
               <label className="field">
                 Invoice Number Prefix
                 <input

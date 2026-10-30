@@ -18,13 +18,15 @@ export default function SalesInvoiceA5({ invoice }) {
   return Array.from({ length: pageCount }, (_, pageIndex) => {
     const lastPage = pageIndex === pageCount - 1;
     return (
-      <InvoicePage key={pageIndex} title="SALES INVOICE" invoice={invoice} lastPage={lastPage} variant="sales" tableHeight={tableHeight}>
+      <InvoicePage key={pageIndex} title="SALES INVOICE" invoice={invoice} lastPage={lastPage} variant="sales" tableHeight={tableHeight} pageNumber={pageIndex + 1} pageCount={pageCount} showPaidStamp={lastPage && invoice.balance <= 0}>
         <CustomerBlock data={invoice} />
         <ItemsTable items={invoice.items.slice(pageIndex * 10, (pageIndex + 1) * 10)} startIndex={pageIndex * 10} />
         {lastPage ? <>
           <div className="ci-bottom ci-sales-bottom">
             <SummaryTable rows={rows} />
-            <Terms terms={invoice.terms} />
+            <div className="ci-right-stack ci-sales-right-stack">
+              <Terms terms={invoice.terms} />
+            </div>
           </div>
           <Signature shopName={invoice.shop.name} />
         </> : <div className="ci-continuation">Continued on next page</div>}

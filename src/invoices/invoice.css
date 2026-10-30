@@ -5,14 +5,13 @@
 .ci-page *{box-sizing:border-box}.ci-header{height:24mm;display:grid;grid-template-columns:25mm 1fr 19mm;grid-template-rows:16mm 7mm;align-items:center;border-bottom:1px solid var(--ci-line);position:relative;padding-bottom:1mm}.ci-brand-mark{grid-column:1;grid-row:1;width:25mm;color:#111}.ci-brand-mark svg{width:100%;height:auto}.ci-brand-copy{grid-column:2;grid-row:1;text-align:center;line-height:1}.ci-shop-name{font-size:25pt;font-weight:900;letter-spacing:1.2px}.ci-shop-subtitle{font-size:12pt;font-weight:800;letter-spacing:3.2px;margin-top:1mm}.ci-invoice-kind{grid-column:3;grid-row:1/3;border-left:1px solid var(--ci-line);padding-left:2mm;color:var(--ci-blue);font-size:9pt;font-weight:800;line-height:1.15;text-align:center}.ci-contact-row{grid-column:2;grid-row:2;display:flex;justify-content:center;align-items:center;gap:3mm;font-size:8.2pt}.ci-contact-row i{height:4mm;border-left:1px solid #888}.ci-categories{display:flex;align-items:center;justify-content:center;gap:2mm;margin-top:2mm;font-size:7pt;font-weight:600}.ci-categories b{color:var(--ci-blue);font-size:7pt}.ci-shop-address{text-align:center;font-size:7.5pt;margin:1mm 0 2mm}.ci-customer{height:18mm;padding:2mm 2.5mm;background:#f4f9fd;border:1px solid var(--ci-line);border-radius:2mm;display:grid;grid-template-rows:repeat(3,1fr);gap:.5mm;margin-bottom:2mm}.ci-customer>div{display:grid;grid-template-columns:25mm 1fr 10mm 27mm;align-items:center;gap:1mm}.ci-customer b{font-size:7.8pt}.ci-customer strong{font-size:8pt;font-weight:600;border-bottom:1px solid #aab6bf;min-height:4mm;padding-left:1mm}.ci-customer .ci-date-label{grid-column:3}.ci-customer .ci-address-value{grid-column:2/5}
 .ci-items{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:2mm;font-size:7.4pt}.ci-items th{background:var(--ci-blue-2);color:#111;font-weight:700;height:6mm}.ci-items td,.ci-items th{border:1px solid var(--ci-line);padding:1mm;text-align:center}.ci-items td:nth-child(2){text-align:left;padding-left:2mm}.ci-items tbody tr{height:5.7mm}.ci-items th:nth-child(1){width:8%}.ci-items th:nth-child(2){width:38%}.ci-items th:nth-child(3){width:12%}.ci-items th:nth-child(4){width:20%}.ci-items th:nth-child(5){width:22%}
 .ci-bottom{display:grid;gap:3mm;align-items:start}.ci-sales-bottom{grid-template-columns:1.1fr .9fr}.ci-installment-bottom{grid-template-columns:1fr 1fr}.ci-summary,.ci-terms,.ci-plan{border:1px solid var(--ci-line);border-radius:2mm;overflow:hidden}.ci-summary h3,.ci-terms h3,.ci-plan h3{margin:0;padding:1.5mm 2mm;background:#eef7ff;color:var(--ci-blue);font-size:9pt;font-weight:800}.ci-summary-icon{font-size:11pt;margin-right:2mm}.ci-summary-row{min-height:8mm;padding:1mm 2mm;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #d4e4f1;font-size:7.7pt}.ci-summary-row.is-strong{background:#edf6fd;font-weight:800}.ci-summary-row span:last-child{font-weight:700;text-align:right}.ci-terms ol{margin:1mm 1mm 1.5mm;padding-left:6mm;font-size:6.6pt}.ci-terms li{padding:.45mm 0}.ci-plan>div{height:15mm;display:flex;align-items:center;justify-content:center;background:#f3f8fd;margin:1.5mm;padding:1.5mm;border-radius:1.5mm;font-size:11pt;font-weight:800;text-align:center}.ci-right-stack{display:grid;gap:2mm}.ci-signature{position:absolute;bottom:4mm;right:5mm;width:47mm;text-align:center;font-size:7pt}.ci-sign-line{border-top:1px solid #222;margin-bottom:1mm}.ci-signature small{display:block;font-size:6.5pt}
-.ci-page{page:auto}@page{size:A5 portrait;margin:0}@media print{.ci-page{border:1px solid #1672c8;width:148mm;height:210mm;break-after:avoid;page-break-after:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+.ci-page{page:auto}@page{size:A5 portrait;margin:0}
 .ci-shop-name { font-size:20pt; letter-spacing:.5px; white-space:nowrap; }
 .ci-shop-subtitle { font-size:9.5pt; letter-spacing:2.3px; margin-top:.6mm; }
 .ci-contact-row { font-size:7.3pt; white-space:nowrap; }
 .ci-invoice-kind { font-size:7.3pt; overflow-wrap:anywhere; padding-inline:1mm; }
 .ci-continuation { margin-top:2mm; padding:2mm; border:1px dashed var(--ci-line); color:#536b7a; font-size:7.5pt; text-align:right; }
 .ci-installment-bottom .ci-summary-row { min-height:6.2mm; font-size:7.2pt; }
-@media print { .ci-page { break-after:page; page-break-after:always; } .ci-page.ci-last-page { break-after:avoid; page-break-after:avoid; } }
 
 /* Climax A5 invoice reference styling */
 .ci-page{border:1px solid #1672c8;padding:4.5mm 4.5mm 4mm;font-family:"Arial Narrow",Arial,sans-serif;color:#101820}
@@ -69,8 +68,29 @@
 .ci-installment-bottom .ci-summary-value{font-size:9pt}
 .ci-plan h3{font-size:12pt}.ci-plan h3 svg{width:6mm;height:6mm;color:#0757a6;flex:none}
 .ci-plan>div{height:17mm;background:#e7f4ff;color:#111820;font-size:12pt;font-weight:900}
-.ci-signature{bottom:5mm;right:5mm;width:52mm;font-size:8pt}
+.ci-signature{bottom:10mm;right:5mm;width:52mm;font-size:8pt}
 .ci-sign-line{border-top:1px solid #111;margin-bottom:1.5mm}
 .ci-signature small{margin-top:.5mm;font-size:7.5pt}
 .ci-continuation{border-color:#86bff0;color:#31566f}
-@media print{.ci-page{break-after:page;page-break-after:always}.ci-page.ci-last-page{break-after:avoid;page-break-after:avoid}}
+.ci-paid-stamp{position:absolute;z-index:1;top:50%;left:50%;width:52mm;height:52mm;object-fit:contain;opacity:.38;transform:translate(-50%,-50%) rotate(-8deg);pointer-events:none}
+.ci-page-footer{position:absolute;left:4.5mm;right:4.5mm;bottom:2mm;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #d3e4f1;padding-top:1mm;color:#52697a;font-size:6.4pt;line-height:1;}
+@media print{.ci-page{break-inside:avoid;break-after:auto;page-break-inside:avoid;page-break-after:auto}.ci-page:not(.ci-last-page){break-after:page;page-break-after:always}}
+
+/* Shop-scoped invoice themes. The accent is saved per shop and flows into every A5 invoice. */
+.ci-page{--ci-brand:var(--ci-blue);--ci-brand-soft:color-mix(in srgb,var(--ci-brand) 15%,white);--ci-brand-pale:color-mix(in srgb,var(--ci-brand) 8%,white);--ci-brand-border:color-mix(in srgb,var(--ci-brand) 48%,white);border-color:var(--ci-brand)}
+.ci-theme-teal{--ci-blue:#0f766e;--ci-blue-2:#ccfbf1;--ci-line:#80cfc0}
+.ci-theme-violet{--ci-blue:#6d3fb3;--ci-blue-2:#ede2ff;--ci-line:#c4a9ef}
+.ci-theme-graphite{--ci-blue:#3f4b5b;--ci-blue-2:#e2e8f0;--ci-line:#aab5c2}
+.ci-shop-logo{grid-column:1/3;grid-row:1;width:55mm;height:22mm;object-fit:contain;align-self:center;justify-self:center}
+.ci-page .ci-header{border-bottom-color:var(--ci-brand-border)}
+.ci-page .ci-invoice-kind{border-left-color:var(--ci-brand-border);background:linear-gradient(145deg,var(--ci-brand-pale),var(--ci-brand-soft))}
+.ci-page .ci-invoice-kind strong,.ci-page .ci-summary h3,.ci-page .ci-plan h3{color:var(--ci-brand)}
+.ci-page .ci-customer{border-color:var(--ci-brand-border);background:linear-gradient(105deg,var(--ci-brand-pale),var(--ci-brand-soft))}
+.ci-page .ci-customer-row .ci-invoice-number{background:var(--ci-brand-soft)}
+.ci-page .ci-items th{border-color:var(--ci-brand-border);background:linear-gradient(180deg,var(--ci-brand-soft),var(--ci-brand-pale))}
+.ci-page .ci-items td{border-color:var(--ci-brand-border)}
+.ci-page .ci-summary,.ci-page .ci-plan{border-color:var(--ci-brand-border)}
+.ci-page .ci-summary h3,.ci-page .ci-plan h3{background:linear-gradient(110deg,var(--ci-brand-pale),var(--ci-brand-soft))}
+.ci-page .ci-summary-title-icon{background:var(--ci-brand)}
+.ci-page .ci-summary-row.is-strong,.ci-page .ci-plan>div{background:var(--ci-brand-pale)}
+.ci-page .ci-plan h3 svg{color:var(--ci-brand)}

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FileUp, ScanBarcode, FileText, PackagePlus, ListChecks, Wallet, ScanLine, Sparkles } from 'lucide-react';
 import { apiRequest, money, num } from '../../api.js';
-import { matchProduct } from '../../../../shared/productMatching.js';
+import { matchProduct } from '../../lib/productMatching.js';
 
 const WARRANTY_MONTHS = Array.from({ length: 16 }, (_, index) => `${(index + 1) * 3} Months`);
 
@@ -105,8 +105,10 @@ export default function StockReceivePage({
             const extractedCode = String(x.code || '').trim();
             return {
               name: String(x.name || ''),
-              // Short numeric OCR fragments are usually row/HSN values, not barcodes.
-              code: /^\d{1,6}$/.test(extractedCode) ? '' : extractedCode,
+              // The API already classifies row/HSN values. Short numeric model codes are valid.
+              code: extractedCode,
+              model: String(x.model || ''),
+              codeType: String(x.codeType || ''),
               qty: x.qty ?? '',
               cost: x.cost ?? '',
               price: x.price ?? '',
@@ -916,3 +918,4 @@ export default function StockReceivePage({
     </div>
   );
 }
+

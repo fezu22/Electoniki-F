@@ -3,14 +3,17 @@ import { Banknote, Calculator, CalendarDays, Clock3, CreditCard, Home, MapPin, P
 import { lineTotal, money } from './invoiceData.js';
 
 export function InvoiceHeader({ title, shop = {} }) {
+  const logo = shop.invoiceDesign?.logo || '';
   const name = String(shop.name || 'CLIMAX').trim();
   const [brand, ...rest] = name.split(/\s+/);
   const subtitle = rest.join(' ') || 'ELECTRIC STORE';
   return (
     <>
       <header className="ci-header">
-        <img className="ci-appliance-art" src="/invoices/washer.jpg" alt="" />
-        <img className="ci-fan-art" src="/invoices/fan.jpg" alt="" />
+        {logo ? <img className="ci-shop-logo" src={logo} alt={`${name} logo`} /> : <>
+          <img className="ci-appliance-art" src="/invoices/washer.jpg" alt="" />
+          <img className="ci-fan-art" src="/invoices/fan.jpg" alt="" />
+        </>}
         <div className="ci-brand-copy">
           <div className="ci-shop-name">{brand.toUpperCase()}</div>
           <div className="ci-shop-subtitle">{subtitle.toUpperCase()}</div>
@@ -89,12 +92,19 @@ export function Terms({ terms = [] }) {
   return <section className="ci-terms"><h3>Terms &amp; Conditions</h3><ol>{terms.map((term, i) => <li key={i}>{term}</li>)}</ol></section>;
 }
 
+export function PaidStamp() {
+  return <img className="ci-paid-stamp" src="/invoices/Climax_PAID_Stamp.png" alt="PAID" />;
+}
+
 export function Signature({ shopName = '' }) {
   return <div className="ci-signature"><div className="ci-sign-line" /><span>Authorized Signature</span><small>({shopName})</small></div>;
 }
 
-export function InvoicePage({ title, invoice, children, lastPage = true, variant = 'sales', tableHeight }) {
-  return <article className={`ci-page ci-${variant}${lastPage ? ' ci-last-page' : ''}`} style={{ '--ci-items-height': `${tableHeight}mm` }}><InvoiceHeader title={title} shop={invoice.shop} />{children}</article>;
+export function InvoicePage({ title, invoice, children, lastPage = true, variant = 'sales', tableHeight, pageNumber = 1, pageCount = 1, showPaidStamp = false }) {
+  const design = invoice.shop?.invoiceDesign || {};
+  const theme = ['blue', 'teal', 'violet', 'graphite'].includes(design.theme) ? design.theme : 'blue';
+  const accent = /^#[0-9a-f]{6}$/i.test(design.accentColor || '') ? design.accentColor : '#0757a6';
+  return <article className={`ci-page ci-${variant} ci-theme-${theme}${lastPage ? ' ci-last-page' : ''}`} style={{ '--ci-items-height': `${tableHeight}mm`, '--ci-brand': accent }}><InvoiceHeader title={title} shop={invoice.shop} />{children}{showPaidStamp && <PaidStamp />}<footer className="ci-page-footer"><span>Software by Crown Software House | 03197794021</span><span>Page {pageNumber} of {pageCount}</span></footer></article>;
 }
 
 export function invoicePageCount(items = []) {

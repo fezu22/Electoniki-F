@@ -31,9 +31,11 @@ import OrdersView from './pages/held-orders/HeldOrdersPage.jsx';
 import SuppliersView from './pages/suppliers/SuppliersPage.jsx';
 import FinanceView from './pages/finance/FinancePage.jsx';
 import ExpensesView from './pages/expenses/ExpensesPage.jsx';
+import CashRegisterPage from './pages/cash-register/CashRegisterPage.jsx';
 import ReportsView from './pages/reports/ReportsPage.jsx';
 import SettingsView from './pages/settings/SettingsPage.jsx';
 import OverviewPage from './pages/overview/OverviewPage.jsx';
+import SuperAdminPage from './pages/super-admin/SuperAdminPage.jsx';
 
 const BANK_CARDS = [
   ['Easypaisa', 'easypaisa'],
@@ -177,7 +179,7 @@ function InstallmentCustomerDetails({ plan }) {
 const PAGE_GROUPS = [
   { label: 'Customers & Khata', pages: [['customers', 'Customers'], ['khata', 'Installment Khata']] },
   { label: 'Stock & Suppliers', pages: [['stock', 'Stock & Products'], ['suppliers', 'Supplier Accounts']] },
-  { label: 'Finance & Expenses', pages: [['finance', 'Finance & Banks'], ['expenses', 'Shop Expenses']] },
+  { label: 'Finance & Expenses', pages: [['finance', 'Finance & Banks'], ['expenses', 'Shop Expenses'], ['cash-register', 'Cash Register']] },
 ];
 
 export default function App() {
@@ -318,7 +320,7 @@ export default function App() {
         if (me.authenticated) {
           setAuthenticated(true);
           setData((current) => ({ ...current, shop: me.shop, user: me.user }));
-          await refreshWorkspace(me.user?.role);
+          if (me.user?.role !== 'super_admin') await refreshWorkspace(me.user?.role);
         }
       } catch (err) {
         console.error('Auth check error:', err);
@@ -332,7 +334,7 @@ export default function App() {
   async function handleAuthenticated(session) {
     setAuthenticated(true);
     if (session?.user) setData((current) => ({ ...current, user: session.user, shop: session.shop || current.shop }));
-    await refreshWorkspace(session?.user?.role);
+    if (session?.user?.role !== 'super_admin') await refreshWorkspace(session?.user?.role);
   }
 
   async function handleLogout() {
@@ -372,13 +374,13 @@ export default function App() {
     setSalePayment((current) => ({ ...current, method: 'cash', cash: '0', bank: '0' }));
   }
 
-  const cashRec = getCashReceived();
+  const cashRec = Math.min(finalTotal, getCashReceived());
   const advanceOrPaid =
     saleType === 'installment'
       ? Math.min(finalTotal, num(plan.advance))
-      : Math.min(finalTotal, cashRec);
+      : cashRec;
   const remainingBalance = Math.max(0, finalTotal - advanceOrPaid);
-  const excessPayment = saleType === 'cash' ? Math.max(0, cashRec - finalTotal) : 0;
+  const excessPayment = saleType === 'cash' ? Math.max(0, getCashReceived() - finalTotal) : 0;
   const monthlyInstallment =
     saleType === 'installment' && num(plan.months) > 0
       ? Math.round(remainingBalance / num(plan.months))
@@ -403,9 +405,11 @@ export default function App() {
     }
 
     const reqQty = Math.max(1, Math.floor(num(newQty)));
-    const existingInCart = cart
-      .filter((c) => (c.productId || c.id) === prod.id)
-      .reduce((s, c) => s + num(c.qty), 0);
+    const productKey = String(prod.id);
+    const matchingCartLines = cart.filter(
+      (c) => String(c.productId || c.id) === productKey
+    );
+    const existingInCart = matchingCartLines.reduce((s, c) => s + num(c.qty), 0);
 
     if (existingInCart + reqQty > num(prod.stock)) {
       showAlert(
@@ -417,9 +421,20 @@ export default function App() {
     }
 
     const unitPrice = num(newPrice) || num(prod.price);
-    const nextCart = [
-      ...cart,
-      {
+    let mergedExistingProduct = false;
+    const nextCart = cart.reduce((items, item) => {
+      if (String(item.productId || item.id) !== productKey) {
+        items.push(item);
+      } else if (!mergedExistingProduct) {
+        // Keep the existing cart row and its rate; only combine quantities.
+        items.push({ ...item, qty: existingInCart + reqQty });
+        mergedExistingProduct = true;
+      }
+      return items;
+    }, []);
+
+    if (!mergedExistingProduct) {
+      nextCart.push({
         id: prod.id,
         productId: prod.id,
         name: prod.name,
@@ -429,15 +444,15 @@ export default function App() {
         cost: num(prod.cost),
         stock: num(prod.stock),
         qty: reqQty,
-      },
-    ];
+      });
+    }
     setCart(nextCart);
     setProductSearch('');
     setSelectedSearchProductId('');
     setNewQty('1');
     setNewPrice('');
     setShowSuggestions(false);
-    notify('Product added to cart.');
+    if (!mergedExistingProduct) notify('Product added to cart.');
   }
 
   function updateCartItemField(idx, field, val) {
@@ -549,7 +564,7 @@ export default function App() {
   async function handleWhatsAppInvoice(bill) {
     const fileName = `${bill.invoiceNo || bill.id || 'invoice'}.pdf`;
     try {
-      const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-page');
+      const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-preview-host');
       await downloadInvoiceElementPdf(invoiceElement, fileName);
       const share = buildWhatsAppInvoiceShare(bill, data.shop);
       setWhatsAppShareInfo({ bill, fileName, ...share });
@@ -558,9 +573,27 @@ export default function App() {
     }
   }
 
+  function handlePrintInvoice() {
+    const backdrop = document.querySelector('.invoice-preview-backdrop');
+    [
+      document.scrollingElement,
+      backdrop,
+      backdrop?.querySelector('.modal'),
+      backdrop?.querySelector('.modal-body'),
+      backdrop?.querySelector('.ci-preview-host'),
+    ].forEach((element) => {
+      if (element) {
+        element.scrollTop = 0;
+        element.scrollLeft = 0;
+      }
+    });
+    window.scrollTo(0, 0);
+    window.print();
+  }
+
   async function downloadSharedInvoiceAgain() {
     try {
-      const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-page');
+      const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-preview-host');
       await downloadInvoiceElementPdf(invoiceElement, whatsAppShareInfo?.fileName || 'invoice.pdf');
     } catch (error) {
       showAlert('Could not create invoice PDF', error?.message || 'Please try again.', 'warning');
@@ -587,6 +620,9 @@ export default function App() {
 
   if (data.user?.role === 'overview_viewer') {
     return <OverviewPage data={data} onLogout={handleLogout} />;
+  }
+  if (data.user?.role === 'super_admin') {
+    return <SuperAdminPage user={data.user} onLogout={handleLogout} />;
   }
 
   const dateText = new Date().toLocaleDateString('en-GB', {
@@ -875,7 +911,7 @@ export default function App() {
               <BillsView
                 sales={data.sales}
                 shop={data.shop}
-                onOpenInvoice={(b) => setPreviewInvoice(b)}
+                onOpenInvoice={(b, onReceiveDue) => setPreviewInvoice({ ...b, onReceiveDue })}
                 onNewSale={() => setPage('sale')}
                 onRefresh={refreshWorkspace}
                 notify={notify}
@@ -958,6 +994,14 @@ export default function App() {
               <ExpensesView
                 expenses={data.expenses}
                 bankAccounts={data.bankAccounts}
+                onRefresh={refreshWorkspace}
+                notify={notify}
+                showAlert={showAlert}
+              />
+            )}
+
+            {page === 'cash-register' && (
+              <CashRegisterPage
                 onRefresh={refreshWorkspace}
                 notify={notify}
                 showAlert={showAlert}
@@ -1864,10 +1908,23 @@ export default function App() {
               >
                 Close
               </button>
+              {previewInvoice.onReceiveDue && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    const openReceiveDue = previewInvoice.onReceiveDue;
+                    setPreviewInvoice(null);
+                    openReceiveDue();
+                  }}
+                >
+                  Receive Due
+                </button>
+              )}
               <button
                 type="button"
                 className="btn secondary"
-                onClick={() => window.print()}
+                onClick={handlePrintInvoice}
               >
                 Print / Save A5 PDF
               </button>

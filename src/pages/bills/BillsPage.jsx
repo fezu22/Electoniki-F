@@ -203,29 +203,15 @@ export default function BillsView({ sales = [], shop, onOpenInvoice, onNewSale, 
                         <button
                           type="button"
                           className="btn ghost small"
-                          onClick={() => onOpenInvoice(b)}
+                          onClick={() => onOpenInvoice(b, b.type !== 'installment' && num(b.balance) > 0
+                            ? () => {
+                                setReceiveBill(b);
+                                setPayAmount(String(b.balance));
+                              }
+                            : null)}
                         >
-                          {b.type === 'installment' ? 'Installment Invoice' : 'Sales Invoice'}
+                          View
                         </button>
-                        <button
-                          type="button"
-                          className="btn secondary small"
-                          onClick={() => onOpenInvoice(b)}
-                        >
-                          A5 PDF / Print
-                        </button>
-                        {b.type !== 'installment' && num(b.balance) > 0 && (
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() => {
-                              setReceiveBill(b);
-                              setPayAmount(String(b.balance));
-                            }}
-                          >
-                            Receive Due
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>

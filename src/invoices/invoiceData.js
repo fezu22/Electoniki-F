@@ -69,6 +69,7 @@ export function toInvoiceModel(sale = {}, shop = {}) {
       phone1: shop.phone || shop.whatsapp || '',
       phone2: shop.phone && shop.whatsapp && shop.phone !== shop.whatsapp ? shop.whatsapp : '',
       address: [shop.address, shop.city].filter(Boolean).join(', '),
+      invoiceDesign: shop.invoiceDesign || {},
     },
   };
 }

@@ -27,7 +27,7 @@ export default function InstallmentInvoiceA5({ invoice }) {
   return Array.from({ length: pageCount }, (_, pageIndex) => {
     const lastPage = pageIndex === pageCount - 1;
     return (
-      <InvoicePage key={pageIndex} title="INSTALLMENT INVOICE" invoice={invoice} lastPage={lastPage} variant="installment" tableHeight={tableHeight}>
+      <InvoicePage key={pageIndex} title="INSTALLMENT INVOICE" invoice={invoice} lastPage={lastPage} variant="installment" tableHeight={tableHeight} pageNumber={pageIndex + 1} pageCount={pageCount} showPaidStamp={lastPage && invoice.balance <= 0}>
         <CustomerBlock data={invoice} />
         <ItemsTable items={invoice.items.slice(pageIndex * 10, (pageIndex + 1) * 10)} startIndex={pageIndex * 10} />
         {lastPage ? <>
