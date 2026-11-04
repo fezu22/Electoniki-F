@@ -10,7 +10,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     proxy: {
-      '/api': process.env.API_PROXY || `http://127.0.0.1:${backendEnv.PORT || 3000}`,
+      '/api': {
+        target: process.env.API_PROXY || `http://127.0.0.1:${backendEnv.PORT || 3000}`,
+        // Preserve the browser's host so the backend can validate its Origin.
+        changeOrigin: false,
+      },
     },
   },
 });
