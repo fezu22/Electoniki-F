@@ -1,10 +1,77 @@
 import NumericInput from '../../components/NumericInput.jsx';
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, ScanBarcode, FileText, PackagePlus, ListChecks, Wallet, ScanLine, Sparkles } from 'lucide-react';
+import { FileUp, ScanBarcode, FileText, PackagePlus, ListChecks, Wallet, ScanLine, Sparkles, X } from 'lucide-react';
 import { apiRequest, money, num } from '../../api.js';
 import { matchProduct } from '../../lib/productMatching.js';
 
 const WARRANTY_MONTHS = Array.from({ length: 16 }, (_, index) => `${(index + 1) * 3} Months`);
+
+async function invoiceDocumentDataUrl(document) {
+  if (!document) return '';
+  if (!document.url) throw new Error('The original invoice photo is unavailable. Select it again before posting.');
+  const response = await fetch(document.url);
+  if (!response.ok) throw new Error('The original invoice photo could not be read.');
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('The original invoice photo could not be read.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function fingerprintInvoiceFile(file) {
+  if (!globalThis.crypto?.subtle || typeof file?.arrayBuffer !== 'function') return '';
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function buildBatchProductGroups(documents) {
+  const groups = new Map();
+  documents.forEach((document, documentIndex) => {
+    (document.draft?.items || []).forEach((item, itemIndex) => {
+      const code = String(item.code || '').trim().toLocaleLowerCase();
+      const model = String(item.model || '').trim().toLocaleLowerCase();
+      const name = String(item.name || '').trim().toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+      const key = code
+        ? `code:${String(item.codeType || '')}:${code}|name:${name}|model:${model}`
+        : name || model ? `name:${name}|model:${model}` : `row:${documentIndex}:${itemIndex}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { key, name: item.name || '', qty: 0, costAmount: 0, costQty: 0, writtenAmount: 0, pricedQty: 0, saleAmount: 0, warranties: new Set(), sources: [] };
+        groups.set(key, group);
+      }
+      if (WARRANTY_MONTHS.includes(String(item.warranty || '').trim())) group.warranties.add(String(item.warranty).trim());
+      const qty = Number(item.qty);
+      const cost = Number(item.cost);
+      const lineTotal = Number(item.lineTotal);
+      const price = Number(item.price);
+      if (Number.isFinite(qty) && qty > 0) {
+        group.qty += qty;
+        if (Number.isFinite(cost) && cost > 0) { group.costAmount += qty * cost; group.costQty += qty; }
+        if (Number.isFinite(price) && price > 0) {
+          group.saleAmount += qty * price;
+          group.pricedQty += qty;
+        }
+      }
+      group.writtenAmount += Number.isFinite(lineTotal) && lineTotal >= 0
+        ? lineTotal
+        : Number.isFinite(qty) && qty > 0 && Number.isFinite(cost) && cost > 0 ? qty * cost : 0;
+      group.sources.push({
+        documentIndex, itemIndex,
+        invoice: document.draft?.invoiceNo || document.name,
+        qty: item.qty ?? '', cost: item.cost ?? '', lineTotal: item.lineTotal ?? '', price: item.price ?? '',
+      });
+    });
+  });
+  return [...groups.values()].map((group) => ({
+    ...group,
+    warranty: group.warranties.size === 1 ? [...group.warranties][0] : group.warranties.size > 1 ? '__mixed__' : '',
+    mixedWarranty: group.warranties.size > 1,
+    averageCost: group.costQty ? group.costAmount / group.costQty : 0,
+    averageSalePrice: group.pricedQty ? group.saleAmount / group.pricedQty : '',
+  }));
+}
 
 export default function StockReceivePage({
   products = [],
@@ -17,8 +84,13 @@ export default function StockReceivePage({
 }) {
   const [step, setStep] = useState('choose'); // 'choose' | 'processing' | 'review'
   const [docInfo, setDocInfo] = useState(null); // { name, type, url, dataUrl, mode }
+  const [documentBatch, setDocumentBatch] = useState([]);
+  const [documentBatchIndex, setDocumentBatchIndex] = useState(0);
+  const [selectedBatchInvoiceIndex, setSelectedBatchInvoiceIndex] = useState(0);
+  const [pendingFiles, setPendingFiles] = useState([]);
   const [limitationNote, setLimitationNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [retryingBatchIndex, setRetryingBatchIndex] = useState(null);
 
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const [supplier, setSupplier] = useState('');
@@ -40,106 +112,341 @@ export default function StockReceivePage({
 
   // Draft items
   const [stockDraft, setStockDraft] = useState([]);
+  const [bulkProfit, setBulkProfit] = useState('');
 
   // Payment fields
   const [paymentMethod, setPaymentMethod] = useState('credit');
   const [paidNow, setPaidNow] = useState('0');
-  const [bankName, setBankName] = useState('HBL');
+  const [bankName, setBankName] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
 
   const uploadInputRef = useRef(null);
+  const pendingFilesRef = useRef([]);
   const productInputRef = useRef(null);
   const qtyInputRef = useRef(null);
   const costInputRef = useRef(null);
   const postingRef = useRef(false);
-  useEffect(() => () => { if (docInfo?.url) URL.revokeObjectURL(docInfo.url); }, [docInfo?.url]);
+  const documentUrlsRef = useRef([]);
+  useEffect(() => () => { documentUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
-  function handleFileChange(e, mode) {
-    const file = e.target.files?.[0];
+  function loadDraftIntoForm(draft = {}) {
+    setSupplier(draft.supplier || '');
+    setInvoiceNo(draft.invoiceNo || '');
+    setInvoiceDate(draft.date || '');
+    setInvoiceTotal(String(draft.invoiceTotal ?? ''));
+    setStockDraft((Array.isArray(draft.items) ? draft.items : []).filter((x) => x && typeof x === 'object').map((x) => ({
+      name: String(x.name || ''), originalName: String(x.originalName || ''), code: String(x.code || '').trim(), model: String(x.model || ''),
+      codeType: String(x.codeType || ''), qty: x.qty ?? '', cost: x.cost ?? '', price: x.price ?? '',
+      warranty: WARRANTY_MONTHS.includes(String(x.warranty || '').trim()) ? String(x.warranty).trim() : '',
+      reviewNote: String(x.reviewNote || ''),
+    })));
+  }
+
+  async function handleFileChange(e) {
+    const files = Array.from(e.target.files || []);
     e.target.value = ''; // Allow selecting the same invoice after Back or an error.
-    if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
-      showAlert('Unsupported document', 'Choose a JPEG, PNG, WebP image or PDF.', 'warning');
+    if (!files.length) return;
+    const invalid = files.find((file) => !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type) || file.size > 10 * 1024 * 1024);
+    if (invalid) {
+      showAlert('Check selected files', `${invalid.name}: choose a JPEG, PNG, WebP image or PDF smaller than 10 MB.`, 'warning');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      showAlert('File too large', 'Please upload an image or PDF smaller than 10 MB.', 'warning');
+    if (pendingFiles.length + files.length > 10) {
+      showAlert('Too many invoices', 'Choose up to 10 invoices in one batch.', 'warning');
       return;
     }
+    if ([...pendingFiles, ...files].reduce((total, file) => total + file.size, 0) > 30 * 1024 * 1024) {
+      showAlert('Batch too large', 'The selected files must total 30 MB or less. Split them into smaller batches.', 'warning');
+      return;
+    }
+    setPendingFiles((current) => {
+      const updated = [...current, ...files];
+      pendingFilesRef.current = updated;
+      return updated;
+    });
+  }
 
-    const url = URL.createObjectURL(file);
+  function confirmRemovePendingFile(index) {
+    const file = pendingFiles[index];
+    if (!file) return;
+    showAlert(
+      'Remove invoice photo?',
+      `Remove “${file.name}” from this scan batch?`,
+      'warning',
+      'Remove photo',
+      () => setPendingFiles((current) => {
+        const updated = current.filter((_, fileIndex) => fileIndex !== index);
+        pendingFilesRef.current = updated;
+        return updated;
+      })
+    );
+  }
+
+  function confirmClearPendingFiles() {
+    if (!pendingFiles.length) return;
+    showAlert(
+      'Clear selected invoices?',
+      `Remove all ${pendingFiles.length} selected ${pendingFiles.length === 1 ? 'file' : 'files'} from this batch?`,
+      'warning',
+      'Clear all',
+      () => { pendingFilesRef.current = []; setPendingFiles([]); }
+    );
+  }
+
+  function clearInvoiceEntryFields() {
+    setSiProduct(''); setSiCode(''); setSiQty(''); setSiCost(''); setSiPrice(''); setSiWarranty('');
+    setSelectedProductId(null); setEditingDraftIndex(null); setComposerErr('');
+    setPaymentMethod('credit'); setPaidNow('0'); setPaymentReference('');
+  }
+
+  function switchBatchInvoice(nextIndex) {
+    if (nextIndex < 0 || nextIndex >= documentBatch.length || nextIndex === documentBatchIndex) return;
+    const currentDraft = {
+      supplier, invoiceNo, date: invoiceDate, invoiceTotal, items: stockDraft,
+    };
+    const updatedBatch = documentBatch.map((doc, index) => index === documentBatchIndex
+      ? { ...doc, draft: currentDraft }
+      : doc);
+    const nextDoc = updatedBatch[nextIndex];
+    setDocumentBatch(updatedBatch);
+    setDocumentBatchIndex(nextIndex);
+    setDocInfo(nextDoc);
+    setLimitationNote(`Invoice ${nextIndex + 1} of ${updatedBatch.length}. ${nextDoc.note || ''}`.trim());
+    loadDraftIntoForm(nextDoc.draft);
+    clearInvoiceEntryFields();
+  }
+
+  function updateBatchDraft(documentIndex, update) {
+    setDocumentBatch((current) => current.map((document, index) => {
+      if (index !== documentIndex) return document;
+      const draft = document.draft || {};
+      return { ...document, draft: typeof update === 'function' ? update(draft) : { ...draft, ...update } };
+    }));
+  }
+
+  function confirmRemoveBatchInvoice(index) {
+    const document = documentBatch[index];
+    if (!document) return;
+    showAlert('Remove invoice from batch?', `Remove ${document.draft?.invoiceNo || document.name} (${document.name}) from this batch? No stock has been saved yet.`, 'warning', 'Remove invoice', () => {
+      const remaining = documentBatch.filter((_, documentIndex) => documentIndex !== index);
+      if (!remaining.length) {
+        setDocumentBatch([]);
+        setDocumentBatchIndex(0);
+        setSelectedBatchInvoiceIndex(0);
+        setDocInfo(null);
+        setLimitationNote('');
+        setStep('choose');
+        return;
+      }
+      const nextIndex = index < selectedBatchInvoiceIndex ? selectedBatchInvoiceIndex - 1 : Math.min(selectedBatchInvoiceIndex, remaining.length - 1);
+      setDocumentBatch(remaining);
+      setSelectedBatchInvoiceIndex(nextIndex);
+      if (index === documentBatchIndex) {
+        setDocumentBatchIndex(nextIndex);
+        setDocInfo(remaining[nextIndex]);
+        loadDraftIntoForm(remaining[nextIndex].draft);
+      } else if (index < documentBatchIndex) {
+        setDocumentBatchIndex(documentBatchIndex - 1);
+      }
+      setLimitationNote(`${remaining.length} invoices in this batch. Review each before posting.`);
+    });
+  }
+
+  async function prepareInvoiceData(file) {
+    if (file.type === 'application/pdf') return { dataUrl: await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+      reader.readAsDataURL(file);
+    }), detailDataUrl: '', textDataUrl: '', headerDataUrl: '', mimeType: 'application/pdf' };
+
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const element = new Image();
+        element.onload = () => resolve(element);
+        element.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+        element.src = objectUrl;
+      });
+      const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not prepare invoice photo for reading.');
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      // Header crop keeps invoice number/date/supplier legible without asking
+      // the model to infer them from the smaller full-page view.
+      const headerScale = 2;
+      const headerTop = Math.round(canvas.height * 0.09);
+      const headerHeight = Math.max(1, Math.round(canvas.height * 0.25));
+      const headerCanvas = document.createElement('canvas');
+      headerCanvas.width = canvas.width * headerScale;
+      headerCanvas.height = headerHeight * headerScale;
+      const headerContext = headerCanvas.getContext('2d');
+      if (!headerContext) throw new Error('Could not prepare invoice header photo.');
+      headerContext.fillStyle = '#fff';
+      headerContext.fillRect(0, 0, headerCanvas.width, headerCanvas.height);
+      headerContext.imageSmoothingEnabled = true;
+      headerContext.imageSmoothingQuality = 'high';
+      headerContext.drawImage(canvas, 0, headerTop, canvas.width, headerHeight, 0, 0, headerCanvas.width, headerCanvas.height);
+      // A table-only view helps the vision model read handwriting at a larger
+      // scale while the full page retains invoice/date/total context.
+      const cropTop = Math.round(canvas.height * 0.25);
+      const cropHeight = Math.max(1, Math.round(canvas.height * 0.68));
+      const detailScale = 1.5;
+      const detailCanvas = document.createElement('canvas');
+      detailCanvas.width = Math.round(canvas.width * detailScale);
+      detailCanvas.height = Math.round(cropHeight * detailScale);
+      const detailContext = detailCanvas.getContext('2d');
+      if (!detailContext) throw new Error('Could not prepare invoice detail photo for reading.');
+      detailContext.fillStyle = '#fff';
+      detailContext.fillRect(0, 0, detailCanvas.width, detailCanvas.height);
+      detailContext.imageSmoothingEnabled = true;
+      detailContext.imageSmoothingQuality = 'high';
+      detailContext.drawImage(canvas, 0, cropTop, canvas.width, cropHeight, 0, 0, detailCanvas.width, detailCanvas.height);
+      const textScale = 2;
+      const textCropX = Math.round(canvas.width * 0.29);
+      const textCropWidth = Math.max(1, Math.round(canvas.width * 0.48));
+      const textCanvas = document.createElement('canvas');
+      textCanvas.width = textCropWidth * textScale;
+      textCanvas.height = cropHeight * textScale;
+      const textContext = textCanvas.getContext('2d');
+      if (!textContext) throw new Error('Could not prepare invoice text detail photo.');
+      textContext.fillStyle = '#fff';
+      textContext.fillRect(0, 0, textCanvas.width, textCanvas.height);
+      textContext.imageSmoothingEnabled = true;
+      textContext.imageSmoothingQuality = 'high';
+      textContext.drawImage(canvas, textCropX, cropTop, textCropWidth, cropHeight, 0, 0, textCanvas.width, textCanvas.height);
+      return { dataUrl: canvas.toDataURL('image/jpeg', 0.9), detailDataUrl: detailCanvas.toDataURL('image/jpeg', 0.92), textDataUrl: textCanvas.toDataURL('image/jpeg', 0.94), headerDataUrl: headerCanvas.toDataURL('image/jpeg', 0.94), mimeType: 'image/jpeg' };
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
+  async function retryBatchInvoice(documentIndex) {
+    const document = documentBatch[documentIndex];
+    if (!document || retryingBatchIndex !== null) return;
+    setRetryingBatchIndex(documentIndex);
+    try {
+      const response = await fetch(document.url);
+      const blob = await response.blob();
+      const file = new File([blob], document.name, { type: document.type });
+      const { dataUrl, detailDataUrl, textDataUrl, headerDataUrl, mimeType } = await prepareInvoiceData(file);
+      const result = await apiRequest('/ocr/invoice', {
+        method: 'POST', signal: AbortSignal.timeout(120000),
+        body: { dataUrl, detailDataUrl, textDataUrl, headerDataUrl, fileName: file.name, mimeType },
+      });
+      setDocumentBatch((current) => current.map((entry, index) => {
+        if (index !== documentIndex) return entry;
+        const previous = entry.draft || {};
+        const extracted = result.draft || {};
+        return {
+          ...entry,
+          note: result.limitationNote || '',
+          draft: {
+            ...extracted,
+            supplier: previous.supplier || extracted.supplier || '',
+            invoiceNo: previous.invoiceNo || extracted.invoiceNo || '',
+            date: previous.date || extracted.date || '',
+            invoiceTotal: previous.invoiceTotal || extracted.invoiceTotal || '',
+            items: (Array.isArray(extracted.items) ? extracted.items : []).map((item) => ({
+              ...item, qty: item.qty ?? '', cost: item.cost ?? '', lineTotal: item.lineTotal ?? '',
+              price: item.price ?? '', warranty: item.warranty ?? '',
+            })),
+            paymentMethod: previous.paymentMethod || 'credit',
+            paidNow: previous.paidNow || '0',
+            bankName: previous.bankName || '',
+            paymentReference: previous.paymentReference || '',
+          },
+        };
+      }));
+    } catch (error) {
+      showAlert('Could not retry invoice', error.message || 'Check the connection and try again.', 'warning');
+    } finally {
+      setRetryingBatchIndex(null);
+    }
+  }
+
+  async function processPendingFiles(filesOverride = null) {
+    const files = filesOverride || pendingFilesRef.current;
+    if (!files.length) return;
     setStockDraft([]);
     setSupplier(''); setInvoiceNo(''); setInvoiceDate(''); setInvoiceTotal('');
     setSiProduct(''); setSiCode(''); setSiQty(''); setSiCost(''); setSiPrice(''); setSiWarranty('');
     setSelectedProductId(null); setEditingDraftIndex(null); setComposerErr('');
     setPaymentMethod('credit'); setPaidNow('0'); setPaymentReference('');
     setStep('processing');
-
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
-      try {
-        const res = await apiRequest('/ocr/invoice', {
-          method: 'POST',
-          signal: AbortSignal.timeout(75000),
-          body: {
-            dataUrl,
-            fileName: file.name,
-            mimeType: file.type || 'image/jpeg',
-          },
-        });
-        const draft = res.draft || {};
-        setDocInfo({
-          name: file.name,
-          type: file.type,
-          url,
-          dataUrl,
-          mode,
-        });
-        setLimitationNote(res.limitationNote || '');
-        setSupplier(draft.supplier || '');
-        setInvoiceNo(draft.invoiceNo || '');
-        setInvoiceDate(draft.date || '');
-        setInvoiceTotal(String(draft.invoiceTotal ?? ''));
-        setStockDraft(
-          (Array.isArray(draft.items) ? draft.items : []).filter((x) => x && typeof x === 'object').map((x) => {
-            const extractedCode = String(x.code || '').trim();
-            return {
-              name: String(x.name || ''),
-              // The API already classifies row/HSN values. Short numeric model codes are valid.
-              code: extractedCode,
-              model: String(x.model || ''),
-              codeType: String(x.codeType || ''),
-              qty: x.qty ?? '',
-              cost: x.cost ?? '',
-              price: x.price ?? '',
-              warranty: WARRANTY_MONTHS.includes(String(x.warranty || '').trim()) ? String(x.warranty).trim() : '',
-              reviewNote: String(x.reviewNote || ''),
-            };
-          })
-        );
-        setStep('review');
-      } catch (err) {
-        setDocInfo({ name: file.name, type: file.type, url, dataUrl, mode });
-        setStockDraft([]);
-        setSupplier('');
-        setInvoiceNo('');
-        setInvoiceTotal('');
-        setLimitationNote(err.name === 'TimeoutError' || err.name === 'AbortError'
-          ? 'Invoice reading took too long. Upload the invoice again to retry, or enter its items manually. No stock was saved.'
-          : `Invoice reading failed: ${err.message}. Upload again to retry, or enter its items manually. No stock was saved.`);
-        setStep('review');
+    try {
+      const scanOne = async (file) => {
+        let fingerprint = '';
+        try {
+          fingerprint = await fingerprintInvoiceFile(file);
+        } catch {
+          // Continue scanning if browser hashing is unavailable.
+        }
+        let draft = {};
+        let note = '';
+        let url = '';
+        try {
+          url = URL.createObjectURL(file);
+          documentUrlsRef.current.push(url);
+          const { dataUrl, detailDataUrl, textDataUrl, headerDataUrl, mimeType } = await prepareInvoiceData(file);
+          const res = await apiRequest('/ocr/invoice', {
+            method: 'POST',
+            signal: AbortSignal.timeout(120000),
+            body: { dataUrl, detailDataUrl, textDataUrl, headerDataUrl, fileName: file.name, mimeType },
+          });
+          const extracted = res.draft || {};
+          draft = {
+            ...extracted,
+            items: (Array.isArray(extracted.items) ? extracted.items : []).map((item) => ({
+              ...item,
+              qty: item.qty ?? '',
+              cost: item.cost ?? '',
+              lineTotal: item.lineTotal ?? '',
+              price: item.price ?? '',
+              warranty: item.warranty ?? '',
+            })),
+            paymentMethod: 'credit',
+            paidNow: '0',
+            bankName: '',
+            paymentReference: '',
+          };
+          note = res.limitationNote || '';
+        } catch (err) {
+          note = err.name === 'TimeoutError' || err.name === 'AbortError'
+            ? 'Invoice reading took too long. Retry or enter its items manually. No stock was saved.'
+            : `Invoice reading failed: ${err.message}. Retry or enter its items manually. No stock was saved.`;
+        }
+        return { name: file.name, type: file.type, url, mode: 'upload', fingerprint, draft, note };
+      };
+      const queue = [];
+      for (let index = 0; index < files.length; index += 2) {
+        queue.push(...await Promise.all(files.slice(index, index + 2).map(scanOne)));
       }
-    };
-    reader.onerror = () => {
-      setDocInfo({ name: file.name, type: file.type, url, mode });
-      setLimitationNote('File could not be read. Enter the supplier invoice manually beside the preview.');
+      setDocumentBatch(queue);
+      setPendingFiles([]);
+      pendingFilesRef.current = [];
+      setDocumentBatchIndex(0);
+      setSelectedBatchInvoiceIndex(0);
+      setDocInfo(queue[0]);
+      setLimitationNote(queue.length > 1
+        ? `${queue.length} invoices were read. Review all of them together; each will remain a separate stock receipt. ${queue[0].note}`.trim()
+        : queue[0].note);
+      loadDraftIntoForm(queue[0].draft);
       setStep('review');
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      showAlert('Could not read selected files', err.message, 'warning');
+      setStep('choose');
+    }
   }
 
   function startManualMode() {
+    pendingFilesRef.current = [];
+    setPendingFiles([]);
     setDocInfo(null);
     setLimitationNote('');
     setSupplier('');
@@ -252,6 +559,50 @@ export default function StockReceivePage({
     }
   }
 
+  function applyProfitToAllSalePrices() {
+    const profit = Number(bulkProfit);
+    if (bulkProfit === '' || !Number.isFinite(profit) || profit < 0) {
+      showAlert('Enter a valid profit', 'Enter a per-unit profit amount of zero or more. Sale price will be purchase cost plus this amount.', 'warning');
+      return;
+    }
+    if (docInfo && documentBatch.length > 1) {
+      const allItems = documentBatch.flatMap((document) => document.draft?.items || []);
+      const validCostCount = allItems.filter((item) => Number.isFinite(Number(item.cost)) && Number(item.cost) > 0).length;
+      if (!validCostCount) {
+        showAlert('Purchase costs required', 'Add or correct purchase costs before applying profit to sale prices.', 'warning');
+        return;
+      }
+      setDocumentBatch((documents) => documents.map((document) => ({
+        ...document,
+        draft: {
+          ...document.draft,
+          items: (document.draft?.items || []).map((item) => {
+            const cost = Number(item.cost);
+            return Number.isFinite(cost) && cost > 0 ? { ...item, price: String(cost + profit) } : item;
+          }),
+        },
+      })));
+      const skipped = allItems.length - validCostCount;
+      showAlert('Sale prices updated', `Added Rs. ${profit.toLocaleString('en-PK')} profit per unit to ${validCostCount} sale prices across all invoices.${skipped ? ` ${skipped} rows with missing purchase cost were skipped.` : ''}`, skipped ? 'warning' : 'success');
+      return;
+    }
+    const validCostCount = stockDraft.filter((item) => Number.isFinite(Number(item.cost)) && Number(item.cost) > 0).length;
+    if (!validCostCount) {
+      showAlert('Purchase costs required', 'Add or correct purchase costs before applying profit to sale prices.', 'warning');
+      return;
+    }
+    setStockDraft((items) => items.map((item) => {
+      const cost = Number(item.cost);
+      return Number.isFinite(cost) && cost > 0 ? { ...item, price: String(cost + profit) } : item;
+    }));
+    const skipped = stockDraft.length - validCostCount;
+    showAlert(
+      'Sale prices updated',
+      `Added Rs. ${profit.toLocaleString('en-PK')} profit per unit to ${validCostCount} sale ${validCostCount === 1 ? 'price' : 'prices'}.${skipped ? ` ${skipped} item${skipped === 1 ? ' was' : 's were'} skipped because its purchase cost is missing.` : ''}`,
+      skipped ? 'warning' : 'success'
+    );
+  }
+
   // Barcode scanner & Enter key navigation inside composer
   function handleProductKeyDown(e) {
     if (e.key === 'Enter') {
@@ -280,9 +631,111 @@ export default function StockReceivePage({
         String(r.supplier || '').toLowerCase() === supplier.trim().toLowerCase()
     );
   const supplierPayableImpact = Math.max(0, statedTotal - num(paidNow));
+  const batchProductGroups = buildBatchProductGroups(documentBatch);
+  const batchInvoiceNumberCounts = new Map();
+  const batchImageCounts = new Map();
+  documentBatch.forEach(({ draft = {}, fingerprint = '' }) => {
+    const invoiceKey = String(draft.invoiceNo || '').trim().toLocaleLowerCase();
+    if (invoiceKey) batchInvoiceNumberCounts.set(invoiceKey, (batchInvoiceNumberCounts.get(invoiceKey) || 0) + 1);
+    if (fingerprint) batchImageCounts.set(fingerprint, (batchImageCounts.get(fingerprint) || 0) + 1);
+  });
+  const duplicateBatchInvoices = [...batchInvoiceNumberCounts.entries()].filter(([, count]) => count > 1).map(([invoiceKey]) => invoiceKey);
+  const duplicateBatchImages = [...batchImageCounts.entries()].filter(([, count]) => count > 1).map(([fingerprint]) => fingerprint);
+  const activeBatchIndex = Math.min(selectedBatchInvoiceIndex, Math.max(0, documentBatch.length - 1));
+  const activeBatchInvoice = documentBatch[activeBatchIndex];
+  const activeBatchDraft = activeBatchInvoice?.draft || {};
+
+  function updateBatchProductGroup(group, updates) {
+    setDocumentBatch((current) => current.map((document, documentIndex) => ({
+      ...document,
+      draft: {
+        ...document.draft,
+        items: (document.draft?.items || []).map((item, itemIndex) =>
+          group.sources.some((source) => source.documentIndex === documentIndex && source.itemIndex === itemIndex)
+            ? { ...item, ...updates }
+            : item
+        ),
+      },
+    })));
+  }
+
+  async function handleBatchSubmit() {
+    const invalid = documentBatch.findIndex((document) => {
+      const draft = document.draft || {};
+      const items = Array.isArray(draft.items) ? draft.items : [];
+      const itemsTotal = items.reduce((sum, item) => sum + num(item.qty) * num(item.cost), 0);
+      const statedTotal = draft.invoiceTotal !== '' && draft.invoiceTotal !== undefined ? num(draft.invoiceTotal) : NaN;
+      const duplicate = stockReceipts.some((receipt) =>
+        String(receipt.invoiceNo || '').trim().toLowerCase() === String(draft.invoiceNo || '').trim().toLowerCase() &&
+        String(receipt.supplier || '').trim().toLowerCase() === String(draft.supplier || '').trim().toLowerCase()
+      );
+      return !String(draft.supplier || '').trim() || !String(draft.invoiceNo || '').trim() || !draft.date ||
+        items.length === 0 || duplicate || !Number.isFinite(statedTotal) || Math.abs(itemsTotal - statedTotal) >= 0.005 ||
+        num(draft.paidNow) > statedTotal || (draft.paymentMethod === 'bank' && num(draft.paidNow) > 0 &&
+          !bankAccounts.some((bank) => bank.active !== false && bank.bankName === draft.bankName)) || items.some((item) => !String(item.name || '').trim() ||
+          !Number.isSafeInteger(Number(item.qty)) || Number(item.qty) < 1 || num(item.cost) <= 0 || num(item.price) <= 0);
+    });
+    if (invalid !== -1) {
+      setSelectedBatchInvoiceIndex(invalid);
+      showAlert('Review invoice details', `Invoice ${invalid + 1} has missing or incomplete information, a total mismatch, or an invoice number that was already posted. Check the highlighted invoice and try again.`, 'warning');
+      return;
+    }
+    postingRef.current = true;
+    setSubmitting(true);
+    const posted = [];
+    try {
+      for (const document of documentBatch) {
+        const draft = document.draft;
+        const invoiceTotal = num(draft.invoiceTotal);
+        const documentDataUrl = await invoiceDocumentDataUrl(document);
+        await apiRequest('/stock-receipts', {
+          method: 'POST',
+          body: {
+            idempotencyKey: `rec-${String(draft.supplier).trim()}-${String(draft.invoiceNo).trim()}`,
+            supplier: String(draft.supplier).trim(),
+            invoiceNo: String(draft.invoiceNo).trim(),
+            invoiceDate: draft.date,
+            invoiceTotal,
+            items: draft.items,
+            paymentMethod: draft.paymentMethod || 'credit',
+            paidNow: num(draft.paidNow),
+            bankName: draft.bankName || '',
+            paymentReference: draft.paymentReference || '',
+            documentName: document.name,
+            documentType: document.type,
+            documentDataUrl,
+            ocrDraftUsed: true,
+          },
+        });
+        posted.push(document);
+      }
+      await onSuccess(documentBatch[0]?.draft?.supplier || '');
+    } catch (error) {
+      const remaining = documentBatch.slice(posted.length);
+      setDocumentBatch(remaining);
+      setDocumentBatchIndex(0);
+      setSelectedBatchInvoiceIndex(0);
+      setDocInfo(remaining[0] || null);
+      if (remaining[0]) loadDraftIntoForm(remaining[0].draft);
+      showAlert(
+        posted.length ? `${posted.length} invoice${posted.length === 1 ? '' : 's'} saved` : 'Could not post invoices',
+        posted.length
+          ? `${posted.length} invoice${posted.length === 1 ? '' : 's'} posted successfully. The remaining invoices are still on this page. Error: ${error.message}`
+          : error.message,
+        'warning'
+      );
+    } finally {
+      setSubmitting(false);
+      postingRef.current = false;
+    }
+  }
 
   async function handleConfirmSubmit(e) {
     e.preventDefault();
+    if (docInfo && documentBatch.length > 1) {
+      await handleBatchSubmit();
+      return;
+    }
     if (postingRef.current) return;
     if (siProduct.trim() || editingDraftIndex !== null) {
       showAlert('Item not added', 'Press "+ Add item" to include the product you typed in the composer.', 'warning');
@@ -321,10 +774,15 @@ export default function StockReceivePage({
       showAlert('Payment is too high', 'Paid amount cannot exceed the invoice total.', 'warning');
       return;
     }
+    if (paymentMethod === 'bank' && num(paidNow) > 0 && !bankAccounts.some((bank) => bank.active !== false && bank.bankName === bankName)) {
+      showAlert('Choose a bank account', 'Select an active bank account for this payment.', 'warning');
+      return;
+    }
 
     postingRef.current = true;
     setSubmitting(true);
     try {
+      const documentDataUrl = await invoiceDocumentDataUrl(docInfo);
       await apiRequest('/stock-receipts', {
         method: 'POST',
         body: {
@@ -340,11 +798,24 @@ export default function StockReceivePage({
           paymentReference,
           documentName: docInfo?.name || '',
           documentType: docInfo?.type || '',
-          documentDataUrl: docInfo?.dataUrl || '',
+          documentDataUrl,
           ocrDraftUsed: Boolean(docInfo),
         },
       });
-      await onSuccess(supplier.trim());
+      const remainingBatch = documentBatch.filter((_, index) => index !== documentBatchIndex);
+      if (remainingBatch.length) {
+        const nextDoc = remainingBatch[0];
+        setDocumentBatch(remainingBatch);
+        setDocumentBatchIndex(0);
+        setSelectedBatchInvoiceIndex(0);
+        setDocInfo(nextDoc);
+        setLimitationNote(`Invoice 1 of ${remainingBatch.length}. ${nextDoc.note || ''}`.trim());
+        loadDraftIntoForm(nextDoc.draft);
+        clearInvoiceEntryFields();
+        showAlert('Invoice saved', `${supplier.trim()} was posted. Review the next invoice in the batch.`, 'success');
+      } else {
+        await onSuccess(supplier.trim());
+      }
     } catch (err) {
       showAlert('Could not post stock receipt', err.message, 'warning');
     } finally {
@@ -379,8 +850,8 @@ export default function StockReceivePage({
                   onClick={() => uploadInputRef.current?.click()}
                 >
                   <span className="stock-choice-icon"><FileUp size={20} /></span>
-                  <b>Upload Invoice</b>
-                  <small>Choose an invoice image or PDF.</small>
+                  <b>{pendingFiles.length ? 'Add More Invoice Photos' : 'Add Invoice Photos'}</b>
+                    <small>Add several invoice photos; all extracted details will appear together on one review page.</small>
                 </button>
                 <button type="button" className="stock-choice stock-start-choice" onClick={startManualMode}>
                   <span className="stock-choice-icon"><ScanBarcode size={20} /></span>
@@ -393,9 +864,33 @@ export default function StockReceivePage({
                 ref={uploadInputRef}
                 type="file"
                 accept="image/*,application/pdf"
+                multiple
                 hidden
-                onChange={(e) => handleFileChange(e, 'upload')}
+                onChange={handleFileChange}
               />
+
+              {pendingFiles.length > 0 && (
+                <section className="stock-entry-card" style={{ marginTop: 18 }}>
+                  <div className="stock-entry-card-head">
+                    <span className="stock-entry-icon"><FileText size={19} /></span>
+                    <div><h3>{pendingFiles.length} invoice {pendingFiles.length === 1 ? 'photo' : 'photos'} selected</h3><p>Scan them together to review every invoice on one page.</p></div>
+                  </div>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 16px' }}>
+                    {pendingFiles.map((file, index) => (
+                      <li key={`${file.name}-${index}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '7px 0' }}>
+                        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{file.name}</span>
+                        <button type="button" className="btn ghost small" aria-label={`Remove ${file.name}`} title="Remove this invoice photo" onClick={() => confirmRemovePendingFile(index)}>
+                          <X size={15} /> Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button type="button" className="btn ghost small" onClick={confirmClearPendingFiles}>Clear selection</button>
+                    <button type="button" className="btn" onClick={() => processPendingFiles()}>Scan {pendingFiles.length} {pendingFiles.length === 1 ? 'invoice' : 'invoices'}</button>
+                  </div>
+                </section>
+              )}
 
             </div>
           </>
@@ -425,7 +920,7 @@ export default function StockReceivePage({
                   <span className="ocr-loading-spark spark-two"><Sparkles size={12} /></span>
                 </div>
                 <h3>Reading your invoice</h3>
-                <p>We’re scanning the image and preparing an editable draft for you to review.</p>
+                <p>We're reading each selected invoice separately and preparing editable drafts for review.</p>
                 <div className="ocr-loading-progress" aria-hidden="true"><span /></div>
                 <div className="ocr-loading-steps" aria-hidden="true">
                   <span className="done"><i />Image received</span>
@@ -455,7 +950,81 @@ export default function StockReceivePage({
             </div>
 
             <form onSubmit={handleConfirmSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              {docInfo && documentBatch.length > 1 ? (
+                <div className="modal-body batch-review-body" style={{ flex: 1 }}>
+                  <div className="modal-note" style={{ marginTop: 0 }}>
+                    All {documentBatch.length} invoices are on this page. Matching products are grouped and quantities combined; each invoice is still posted as its own receipt.
+                  </div>
+                  {duplicateBatchImages.length > 0 && <div className="batch-duplicate-warning"><strong>The same invoice photo appears more than once.</strong> Remove the duplicate image from the list before posting; repeated copies would inflate the grouped quantities.</div>}
+                  {duplicateBatchInvoices.length > 0 && <div className="batch-duplicate-warning"><strong>Invoice number {duplicateBatchInvoices.join(', ')} appears more than once.</strong> Check whether these are duplicate bills and remove repeated invoices from the list before posting.</div>}
+                  <div className="batch-review-layout">
+                    <aside className="batch-image-rail" aria-label="Selected invoice images">
+                      <h3>Invoices <span>{documentBatch.length}</span></h3>
+                      {documentBatch.map((document, documentIndex) => {
+                        const draft = document.draft || {};
+                        const count = draft.items?.length || 0;
+                        return <div key={`${document.name}-${documentIndex}`} className={`batch-image-entry ${activeBatchIndex === documentIndex ? 'active' : ''}`}>
+                          <button type="button" className="batch-image-button" onClick={() => setSelectedBatchInvoiceIndex(documentIndex)}>
+                            {document.type === 'application/pdf' ? <span className="batch-image-pdf"><FileText size={25} /></span> : <img src={document.url} alt={`Invoice ${documentIndex + 1}`} />}
+                            <span className="batch-image-caption"><b>{draft.invoiceNo || `Invoice ${documentIndex + 1}`}</b><small>{count} {count === 1 ? 'row' : 'rows'} · {document.name}</small></span>
+                          </button>
+                          <button type="button" className="batch-image-remove" aria-label={`Remove ${document.name} from batch`} title="Remove invoice from batch" onClick={() => confirmRemoveBatchInvoice(documentIndex)}><X size={14} /> Remove</button>
+                        </div>;
+                      })}
+                    </aside>
+                    <div className="batch-main-column">
+                      <div className="batch-profit-toolbar">
+                        <label className="field">Profit per unit (Rs.)<NumericInput type="text" min="0" step="0.01" value={bulkProfit} onChange={(event) => setBulkProfit(event.target.value)} placeholder="e.g. 2,000" /></label>
+                        <button type="button" className="btn secondary small" onClick={applyProfitToAllSalePrices}>Apply to all sale prices</button>
+                        <button type="button" className="btn secondary small" onClick={() => updateBatchDraft(activeBatchIndex, (current) => ({ ...current, items: [...(current.items || []), { name: '', qty: 1, cost: '', lineTotal: '', price: '', warranty: '' }] }))}>+ Add item to selected invoice</button>
+                      </div>
+                      <section className="batch-invoice-card">
+                        <header className="batch-invoice-title"><div><span className="stock-entry-step">Invoice {activeBatchIndex + 1} of {documentBatch.length}</span><h3>{activeBatchInvoice?.name}</h3></div><a href={activeBatchInvoice?.url} target="_blank" rel="noopener noreferrer">View full invoice ↗</a></header>
+                        <div className="fields batch-invoice-fields">
+                          <label className="field">Supplier name<input required value={activeBatchDraft.supplier || ''} onChange={(event) => updateBatchDraft(activeBatchIndex, { supplier: event.target.value })} placeholder="Supplier" /></label>
+                          <label className="field">Supplier invoice number<input required value={activeBatchDraft.invoiceNo || ''} onChange={(event) => updateBatchDraft(activeBatchIndex, { invoiceNo: event.target.value })} placeholder="Invoice number" /></label>
+                          <label className="field">Invoice date<input required type="date" value={activeBatchDraft.date || ''} onChange={(event) => updateBatchDraft(activeBatchIndex, { date: event.target.value })} /></label>
+                          <label className="field">Invoice total (Rs.)<NumericInput required type="text" min="0" value={activeBatchDraft.invoiceTotal ?? ''} onChange={(event) => updateBatchDraft(activeBatchIndex, { invoiceTotal: event.target.value })} placeholder="Enter written invoice total" /></label>
+                        </div>
+                        {activeBatchInvoice?.note && <div className="batch-invoice-note">{activeBatchInvoice.note}</div>}
+                        <div className="batch-invoice-totals">
+                          <span>Invoice item total: <b>{money((activeBatchDraft.items || []).reduce((sum, item) => sum + num(item.qty) * num(item.cost), 0))}</b></span>
+                          <span>Written invoice total: <b>{activeBatchDraft.invoiceTotal === '' || activeBatchDraft.invoiceTotal === undefined ? 'Enter total' : money(num(activeBatchDraft.invoiceTotal))}</b></span>
+                          {(activeBatchDraft.invoiceTotal !== '' && activeBatchDraft.invoiceTotal !== undefined) && Math.abs((activeBatchDraft.items || []).reduce((sum, item) => sum + num(item.qty) * num(item.cost), 0) - num(activeBatchDraft.invoiceTotal)) > 0.005 && <strong className="batch-total-warning">Invoice totals differ by {money(Math.abs((activeBatchDraft.items || []).reduce((sum, item) => sum + num(item.qty) * num(item.cost), 0) - num(activeBatchDraft.invoiceTotal)))}.</strong>}
+                          <label>Payment<select value={activeBatchDraft.paymentMethod || 'credit'} onChange={(event) => updateBatchDraft(activeBatchIndex, { paymentMethod: event.target.value, ...(event.target.value === 'credit' ? { paidNow: '0' } : {}) })}><option value="credit">Supplier credit</option><option value="cash">Cash</option><option value="bank">Bank transfer</option><option value="other">Other funds</option></select></label>
+                          <label>Paid now (Rs.)<NumericInput type="text" min="0" value={activeBatchDraft.paidNow ?? '0'} disabled={(activeBatchDraft.paymentMethod || 'credit') === 'credit'} onChange={(event) => updateBatchDraft(activeBatchIndex, { paidNow: event.target.value })} /></label>
+                          {activeBatchDraft.paymentMethod === 'bank' && <label>Bank account<select value={activeBatchDraft.bankName || ''} onChange={(event) => updateBatchDraft(activeBatchIndex, { bankName: event.target.value })}><option value="">Select an account</option>{bankAccounts.filter((account) => account.active !== false).map((account) => <option key={account.id} value={account.bankName}>{account.bankName}</option>)}</select></label>}
+                        </div>
+                      </section>
+                      <section className="batch-invoice-card batch-products-card">
+                        <header className="batch-invoice-title"><div><h3>Combined products</h3><small>Across all {documentBatch.length} selected invoices; matching product/model rows appear once with quantities added together.</small></div><span className="tag">{batchProductGroups.length} products · {batchProductGroups.reduce((sum, group) => sum + group.qty, 0)} units</span></header>
+                        <div className="table-wrap batch-group-table"><table className="table">
+                          <thead><tr><th>Product</th><th>Total qty</th><th>Avg. cost</th><th>Written amount</th><th>Sale price</th><th>Warranty</th><th>Invoice rows</th></tr></thead>
+                          <tbody>{batchProductGroups.map((group) => <React.Fragment key={group.key}><tr>
+                            <td><input aria-label="Combined product name" value={group.name} onChange={(event) => updateBatchProductGroup(group, { name: event.target.value })} placeholder="Product name" /></td>
+                            <td><b>{group.qty}</b></td><td>{group.averageCost ? money(group.averageCost) : '—'}</td><td>{money(group.writtenAmount)}</td>
+                            <td><NumericInput type="text" min="0.01" aria-label={`Sale price for ${group.name}`} placeholder="Sale price" value={group.averageSalePrice} onChange={(event) => updateBatchProductGroup(group, { price: event.target.value })} /></td>
+                            <td><select className="batch-warranty-select" aria-label={`Warranty for ${group.name}`} value={group.warranty} onChange={(event) => updateBatchProductGroup(group, { warranty: event.target.value })}><option value="">No warranty</option><option value="__mixed__" disabled>Mixed — edit rows</option>{WARRANTY_MONTHS.map((warranty) => <option key={warranty} value={warranty}>{warranty}</option>)}</select>{group.mixedWarranty && <small className="batch-warranty-note">Different by invoice row</small>}</td>
+                            <td><details className="batch-source-details"><summary>{group.sources.length} {group.sources.length === 1 ? 'row' : 'rows'} · edit</summary>{group.sources.map((source) => {
+                              const item = documentBatch[source.documentIndex]?.draft?.items?.[source.itemIndex] || {};
+                              const setSourceItem = (key, value) => updateBatchDraft(source.documentIndex, (current) => ({ ...current, items: (current.items || []).map((entry, index) => index === source.itemIndex ? { ...entry, [key]: value } : entry) }));
+                              return <div className="batch-source-row" key={`${source.documentIndex}-${source.itemIndex}`}><button type="button" className="batch-source-link" onClick={() => setSelectedBatchInvoiceIndex(source.documentIndex)}>{documentBatch[source.documentIndex]?.draft?.invoiceNo || `Invoice ${source.documentIndex + 1}`}</button><label>Qty<NumericInput type="text" min="1" step="1" value={item.qty ?? ''} onChange={(event) => setSourceItem('qty', event.target.value)} /></label><label>Cost<NumericInput type="text" min="0.01" value={item.cost ?? ''} onChange={(event) => setSourceItem('cost', event.target.value)} /></label><label>Amount<NumericInput type="text" min="0" value={item.lineTotal ?? ''} onChange={(event) => setSourceItem('lineTotal', event.target.value)} /></label><label>Warranty<select value={item.warranty || ''} onChange={(event) => setSourceItem('warranty', event.target.value)}><option value="">None</option>{WARRANTY_MONTHS.map((warranty) => <option key={warranty} value={warranty}>{warranty}</option>)}</select></label><button type="button" className="icon-btn" aria-label="Remove this invoice product row" onClick={() => updateBatchDraft(source.documentIndex, (current) => ({ ...current, items: (current.items || []).filter((_, index) => index !== source.itemIndex) }))}>×</button></div>;
+                            })}</details></td>
+                          </tr>{group.sources.some((source) => documentBatch[source.documentIndex]?.draft?.items?.[source.itemIndex]?.reviewNote) && <tr><td colSpan="7"><small className="stock-review-warning">{Array.from(new Set(group.sources.map((source) => documentBatch[source.documentIndex]?.draft?.items?.[source.itemIndex]?.reviewNote).filter(Boolean))).join(' · ')}</small></td></tr>}</React.Fragment>)}</tbody>
+                        </table>{batchProductGroups.length === 0 && <div className="empty batch-empty">No product rows read yet. Add rows to the selected invoice or retry its scan.<button type="button" className="btn secondary small" disabled={retryingBatchIndex !== null} onClick={() => retryBatchInvoice(activeBatchIndex)}>{retryingBatchIndex === activeBatchIndex ? 'Retrying…' : 'Retry selected invoice'}</button></div>}</div>
+                      </section>
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div className="modal-body" style={{ flex: 1 }}>
+                {docInfo && documentBatch.length > 1 && (
+                  <div className="stock-batch-nav" aria-label="Invoice batch navigation">
+                    <button type="button" className="btn secondary small" onClick={() => switchBatchInvoice(documentBatchIndex - 1)} disabled={documentBatchIndex === 0}>Previous</button>
+                    <strong>Invoice {documentBatchIndex + 1} of {documentBatch.length}<span>{docInfo.name}</span></strong>
+                    <button type="button" className="btn secondary small" onClick={() => switchBatchInvoice(documentBatchIndex + 1)} disabled={documentBatchIndex === documentBatch.length - 1}>Next</button>
+                  </div>
+                )}
                 {limitationNote && (
                   <div className="modal-note" style={{ marginTop: 0, marginBottom: 14 }}>
                     {limitationNote}
@@ -463,9 +1032,21 @@ export default function StockReceivePage({
                       <button type="button" className="btn secondary small" style={{ marginLeft: 12 }}
                         onClick={async () => {
                           try {
-                            const blob = await (await fetch(docInfo.url)).blob();
+                            const response = await fetch(docInfo.url);
+                            const blob = await response.blob();
                             const file = new File([blob], docInfo.name, { type: docInfo.type });
-                            handleFileChange({ target: { files: [file], value: '' } }, docInfo.mode);
+                            const { dataUrl, detailDataUrl, textDataUrl, headerDataUrl, mimeType } = await prepareInvoiceData(file);
+                            const res = await apiRequest('/ocr/invoice', {
+                              method: 'POST', signal: AbortSignal.timeout(120000),
+                              body: { dataUrl, detailDataUrl, textDataUrl, headerDataUrl, fileName: file.name, mimeType },
+                            });
+                            const updated = documentBatch.map((doc, index) => index === documentBatchIndex
+                              ? { ...doc, draft: res.draft || {}, note: res.limitationNote || '' }
+                              : doc);
+                            setDocumentBatch(updated);
+                            setDocInfo(updated[documentBatchIndex]);
+                            setLimitationNote(`Invoice ${documentBatchIndex + 1} of ${updated.length}. ${res.limitationNote || ''}`.trim());
+                            loadDraftIntoForm(res.draft || {});
                           } catch {
                             showAlert('Could not retry', 'Go Back and select the invoice again.', 'warning');
                           }
@@ -710,9 +1291,16 @@ export default function StockReceivePage({
 
                       {docInfo ? (
                         <>
-                          <div className="stock-extracted-toolbar">
+                          <div className="stock-extracted-toolbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                             <span>Review item details</span>
-                            <button type="button" className="btn secondary small" onClick={() => setStockDraft((items) => [...items, { name: '', code: '', qty: 1, cost: '', price: '', warranty: '' }])}>+ Add missing item</button>
+                            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                              <label className="field" style={{ margin: 0, minWidth: 180 }}>
+                                Profit per unit (Rs.)
+                                <NumericInput type="text" min="0" step="0.01" value={bulkProfit} onChange={(event) => setBulkProfit(event.target.value)} placeholder="e.g. 2,000" />
+                              </label>
+                              <button type="button" className="btn secondary small" onClick={applyProfitToAllSalePrices}>Apply to all sale prices</button>
+                              <button type="button" className="btn secondary small" onClick={() => setStockDraft((items) => [...items, { name: '', code: '', qty: 1, cost: '', price: '', warranty: '' }])}>+ Add missing item</button>
+                            </div>
                           </div>
                           <div className="table-wrap stock-extracted-table">
                             <table className="table">
@@ -849,6 +1437,7 @@ export default function StockReceivePage({
                             <option value="credit">Supplier Credit (Pay Later)</option>
                             <option value="cash">Cash</option>
                             <option value="bank">Bank Transfer</option>
+                            <option value="other">Other funds (outside drawer)</option>
                           </select>
                         </label>
                         <label className="field">
@@ -865,7 +1454,8 @@ export default function StockReceivePage({
                           <label className="field">
                             Bank account
                             <select value={bankName} onChange={(e) => setBankName(e.target.value)}>
-                              {bankAccounts.map((b) => (
+                              <option value="">Select an account</option>
+                              {bankAccounts.filter((b) => b.active !== false).map((b) => (
                                 <option key={b.id} value={b.bankName}>
                                   {b.bankName} ({money(b.balance)})
                                 </option>
@@ -901,6 +1491,7 @@ export default function StockReceivePage({
                   </div>
                 </div>
               </div>
+              )}
 
               <div className="modal-actions">
                 <button type="button" className="btn ghost" onClick={onClose}>
@@ -910,7 +1501,7 @@ export default function StockReceivePage({
                   Back
                 </button>
                 <button type="submit" className="btn" disabled={submitting}>
-                  {submitting ? 'Posting Stock...' : 'Confirm & Add Stock'}
+                  {submitting ? 'Posting Stock...' : docInfo && documentBatch.length > 1 ? `Confirm & Add All ${documentBatch.length} Invoices` : 'Confirm & Add Stock'}
                 </button>
               </div>
             </form>

@@ -15,7 +15,7 @@ export default function ReturnsView({
   const [returnQuantities, setReturnQuantities] = useState({});
   const [reason, setReason] = useState('Defective / Customer exchange');
   const [refundMethod, setRefundMethod] = useState('cash');
-  const [bankName, setBankName] = useState('HBL');
+  const [bankName, setBankName] = useState('');
   const [search, setSearch] = useState('');
   const [invoiceQuery, setInvoiceQuery] = useState('');
   const [invoiceListOpen, setInvoiceListOpen] = useState(false);
@@ -86,6 +86,10 @@ export default function ReturnsView({
       showAlert('No items selected', 'Enter a return quantity >= 1 for at least one sold item.', 'warning');
       return;
     }
+    if (refundMethod === 'bank' && !bankAccounts.some((bank) => bank.active !== false && bank.bankName === bankName)) {
+      showAlert('Choose a bank account', 'Select an active account for the refund.', 'warning');
+      return;
+    }
 
     setSubmittingReturn(true);
     const idempotencyKey = returnRequestKey || `return-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
@@ -100,7 +104,7 @@ export default function ReturnsView({
           items: itemsToReturn,
           reason,
           refundMethod,
-          bankName,
+          bankName: refundMethod === 'bank' ? bankName : '',
         },
       });
       setShowModal(false);
@@ -141,6 +145,8 @@ export default function ReturnsView({
               setInvoiceQuery('');
               setSelectedInvoiceNo('');
               setReturnQuantities({});
+              setRefundMethod('cash');
+              setBankName('');
               setReturnRequestKey(`return-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`);
               setInvoiceListOpen(false);
               setShowModal(true);
@@ -354,8 +360,9 @@ export default function ReturnsView({
                   {refundMethod === 'bank' && (
                     <label className="field">
                       Bank Account
-                      <select value={bankName} onChange={(e) => setBankName(e.target.value)}>
-                        {bankAccounts.map((b) => (
+                      <select required value={bankName} onChange={(e) => setBankName(e.target.value)}>
+                        <option value="">Select an account</option>
+                        {bankAccounts.filter((b) => b.active !== false).map((b) => (
                           <option key={b.id} value={b.bankName}>
                             {b.bankName}
                           </option>

@@ -16,7 +16,23 @@ import {
 import { apiRequest, money, num } from '../../api.js';
 
 export default function StockProductsPage({ app }) {
-  const { optionalWarrantyValue, data, page, setPage, inventorySearch, setInventorySearch, inventoryChip, setInventoryChip, stockTab, setStockTab, setEditingProduct, setShowProductModal } = app;
+  const { optionalWarrantyValue, data, page, setPage, inventorySearch, setInventorySearch, inventoryChip, setInventoryChip, stockTab, setStockTab, setEditingProduct, setShowProductModal, showAlert } = app;
+  async function downloadInvoice(receipt) {
+    try {
+      const document = await apiRequest(`/stock-receipts/${encodeURIComponent(receipt.id)}/document`);
+      const blob = await (await fetch(document.dataUrl)).blob();
+      const url = URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = document.name || 'supplier-invoice';
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      showAlert('Could not download invoice', error.message, 'warning');
+    }
+  }
   return (
               <>
                 <div className="page-head">
@@ -68,7 +84,7 @@ export default function StockProductsPage({ app }) {
                     </div>
                     {(() => {
                       const low = data.products
-                        .filter((p) => num(p.stock) <= num(p.reorderThreshold || 5))
+                        .filter((p) => num(p.stock) <= num(p.reorderThreshold ?? 5))
                         .sort((a, b) => num(a.stock) - num(b.stock));
                       if (low.length === 0) {
                         return (
@@ -165,7 +181,7 @@ export default function StockProductsPage({ app }) {
                         const maxStock = Math.max(10, ...data.products.map((x) => num(x.stock)));
                         const filtered = data.products.filter((p) => {
                           const s = num(p.stock);
-                          const thresh = num(p.reorderThreshold || 5);
+                          const thresh = num(p.reorderThreshold ?? 5);
                           const matchText =
                             !q ||
                             p.name.toLowerCase().includes(q) ||
@@ -239,7 +255,7 @@ export default function StockProductsPage({ app }) {
                                       <td>
                                         {stock <= 2 ? (
                                           <span className="status overdue">Critical · {stock}</span>
-                                        ) : stock <= num(p.reorderThreshold || 5) ? (
+                                        ) : stock <= num(p.reorderThreshold ?? 5) ? (
                                           <span className="status pending">Reorder · {stock}</span>
                                         ) : (
                                           <span className="status">Healthy</span>
@@ -329,6 +345,7 @@ export default function StockProductsPage({ app }) {
                             <th>Paid</th>
                             <th>Payable Added</th>
                             <th>Status</th>
+                            <th>Document</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -351,6 +368,7 @@ export default function StockProductsPage({ app }) {
                               <td>
                                 <span className="status">Posted</span>
                               </td>
+                              <td>{r.hasDocument ? <button type="button" className="btn ghost small" onClick={() => downloadInvoice(r)}>Download invoice</button> : 'Not attached'}</td>
                             </tr>
                           ))}
                         </tbody>

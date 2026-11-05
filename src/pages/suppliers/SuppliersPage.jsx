@@ -1,5 +1,5 @@
 import NumericInput from '../../components/NumericInput.jsx';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { apiRequest, money, num } from '../../api.js';
 
 export default function SuppliersView({
@@ -24,8 +24,10 @@ export default function SuppliersView({
 
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
-  const [payBank, setPayBank] = useState('HBL');
+  const [payBank, setPayBank] = useState('');
   const [payRef, setPayRef] = useState('');
+  const [paying, setPaying] = useState(false);
+  const paymentInFlight = useRef(false);
 
   async function handleAddSupplier(e) {
     e.preventDefault();
@@ -50,13 +52,20 @@ export default function SuppliersView({
   async function handlePaySupplier(e) {
     e.preventDefault();
     if (!paySupplier) return;
+    if (payMethod === 'bank' && !bankAccounts.some((bank) => bank.active !== false && bank.bankName === payBank)) {
+      showAlert('Choose a bank account', 'Select an active bank account for this payment.', 'warning');
+      return;
+    }
+    if (paymentInFlight.current) return;
+    paymentInFlight.current = true;
+    setPaying(true);
     try {
       await apiRequest(`/suppliers/${paySupplier.id}/pay`, {
         method: 'POST',
         body: {
           amount: num(payAmount),
           method: payMethod,
-          bankName: payBank,
+          bankName: payMethod === 'bank' ? payBank : '',
           reference: payRef,
         },
       });
@@ -65,6 +74,9 @@ export default function SuppliersView({
       notify(`Recorded payment to ${paySupplier.name}.`);
     } catch (err) {
       showAlert('Payment error', err.message, 'warning');
+    } finally {
+      paymentInFlight.current = false;
+      setPaying(false);
     }
   }
 
@@ -151,6 +163,9 @@ export default function SuppliersView({
                           onClick={() => {
                             setPaySupplier(s);
                             setPayAmount(String(s.balancePayable));
+                            setPayMethod('cash');
+                            setPayBank('');
+                            setPayRef('');
                           }}
                         >
                           Pay Supplier
@@ -268,13 +283,15 @@ export default function SuppliersView({
                     <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
                       <option value="cash">Cash</option>
                       <option value="bank">Bank Transfer</option>
+                      <option value="other">Other funds (outside drawer)</option>
                     </select>
                   </label>
                   {payMethod === 'bank' && (
                     <label className="field">
                       Bank Account
-                      <select value={payBank} onChange={(e) => setPayBank(e.target.value)}>
-                        {bankAccounts.map((b) => (
+                      <select required value={payBank} onChange={(e) => setPayBank(e.target.value)}>
+                        <option value="">Select an account</option>
+                        {bankAccounts.filter((b) => b.active !== false).map((b) => (
                           <option key={b.id} value={b.bankName}>
                             {b.bankName} ({money(b.balance)})
                           </option>
@@ -296,7 +313,7 @@ export default function SuppliersView({
                 <button type="button" className="btn ghost" onClick={() => setPaySupplier(null)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn">
+                <button type="submit" className="btn" disabled={paying}>
                   Confirm Payment
                 </button>
               </div>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Search } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, Search, UserRound, UsersRound } from 'lucide-react';
 import { money, num } from '../../api.js';
 
 function normalizedPhone(value) {
@@ -41,6 +41,7 @@ function groupPlansByCustomer(plans = []) {
 }
 
 export default function InstallmentKhataPage({ app }) {
+  const [expandedAccounts, setExpandedAccounts] = useState(() => new Set());
   const {
     data,
     khataSearch,
@@ -52,11 +53,20 @@ export default function InstallmentKhataPage({ app }) {
   } = app;
   const accounts = groupPlansByCustomer(data.installmentPlans);
   const query = khataSearch.trim().toLowerCase();
+  const queryDigits = query.replace(/\D/g, '');
   const filteredAccounts = accounts.filter((account) =>
     !query ||
     account.customerName.toLowerCase().includes(query) ||
-    account.phone.toLowerCase().includes(query) ||
-    account.plans.some((item) => String(item.planNo || item.invoiceNo || '').toLowerCase().includes(query))
+    account.plans.some((item) => {
+      const details = item.installmentDetails || {};
+      const customer = details.customer || {};
+      const values = [item.phone, item.whatsapp, item.cnic, item.customerId, item.planNo, item.invoiceNo,
+        customer.phone, customer.whatsapp, customer.cnic, customer.id];
+      return values.some((value) => {
+        const text = String(value || '').toLowerCase();
+        return text.includes(query) || (queryDigits.length >= 3 && text.replace(/\D/g, '').includes(queryDigits));
+      });
+    })
   );
 
   return (
@@ -118,6 +128,12 @@ export default function InstallmentKhataPage({ app }) {
               const totalAmount = account.plans.reduce((sum, item) => sum + num(item.totalAmount), 0);
               const totalPaid = account.plans.reduce((sum, item) => sum + num(item.paid), 0);
               const balance = account.plans.reduce((sum, item) => sum + num(item.balance), 0);
+              const latestPlan = account.plans[0] || {};
+              const details = latestPlan.installmentDetails || {};
+              const customer = details.customer || {};
+              const guarantor = details.guarantor || {};
+              const customerPhoto = customer.photoDataUrl || latestPlan.customerPhoto || '';
+              const guarantorPhoto = guarantor.photoDataUrl || latestPlan.guarantorPhoto || '';
               const activePlans = account.plans.filter((item) => num(item.balance) > 0);
               const monthlyAmount = activePlans.reduce((sum, item) => sum + num(item.monthlyAmount), 0);
               const progress = totalAmount ? Math.min(100, Math.round((totalPaid / totalAmount) * 100)) : 100;
@@ -131,11 +147,12 @@ export default function InstallmentKhataPage({ app }) {
 
               return (
                 <article key={account.key} className="khata-account">
+                  <div className="khata-account-topline"><span>INSTALLMENT ACCOUNT</span><span>{account.plans.length} plan{account.plans.length === 1 ? '' : 's'}</span></div>
                   <div className="khata-account-head">
-                    <div className="khata-avatar">{initials || 'CU'}</div>
+                    {customerPhoto ? <img className="khata-avatar khata-avatar-photo" src={customerPhoto} alt={`${account.customerName} photo`} /> : <div className="khata-avatar">{initials || 'CU'}</div>}
                     <div className="khata-customer">
                       <b>{account.customerName}</b>
-                      <small>{account.phone || 'No phone'} · {account.plans.length} purchase plan{account.plans.length === 1 ? '' : 's'}</small>
+                      <small>{customer.phone || account.phone || 'No phone'} · {account.plans.length} purchase plan{account.plans.length === 1 ? '' : 's'}</small>
                     </div>
                     <span className={`khata-status ${isPaid ? 'paid' : ''}`}>{isPaid ? 'Paid' : 'Active'}</span>
                   </div>
@@ -145,6 +162,20 @@ export default function InstallmentKhataPage({ app }) {
                     <div className="khata-progress-label">{progress}% paid</div>
                   </div>
                   <div className="khata-progress"><span style={{ width: `${progress}%` }} /></div>
+
+                  <button type="button" className="khata-details-toggle" aria-expanded={expandedAccounts.has(account.key)} onClick={() => setExpandedAccounts((previous) => { const next = new Set(previous); next.has(account.key) ? next.delete(account.key) : next.add(account.key); return next; })}>
+                    <UsersRound size={15} /> Customer & guarantor details <ChevronDown size={15} className={expandedAccounts.has(account.key) ? 'is-expanded' : ''} />
+                  </button>
+                  {expandedAccounts.has(account.key) && <div className="khata-people-details">
+                    <section className="khata-person-card">
+                      <div className="khata-person-heading"><UserRound size={15} /><b>Customer</b></div>
+                      <div className="khata-person-content">{customerPhoto ? <img src={customerPhoto} alt="Customer" /> : <div className="khata-person-placeholder"><UserRound size={20} /></div>}<div><strong>{customer.name || account.customerName}</strong><small>Phone: {customer.phone || latestPlan.phone || account.phone || '—'}</small><small>WhatsApp: {customer.whatsapp || latestPlan.whatsapp || '—'}</small><small>CNIC: {customer.cnic || latestPlan.cnic || '—'}</small><small>Address: {customer.address || latestPlan.address || '—'}</small></div></div>
+                    </section>
+                    <section className="khata-person-card">
+                      <div className="khata-person-heading"><UsersRound size={15} /><b>Guarantor</b></div>
+                      <div className="khata-person-content">{guarantorPhoto ? <img src={guarantorPhoto} alt="Guarantor" /> : <div className="khata-person-placeholder"><UserRound size={20} /></div>}<div><strong>{guarantor.name || latestPlan.guarantor || 'Not provided'}</strong><small>Phone: {guarantor.phone || latestPlan.guarantorPhone || '—'}</small><small>Address: {guarantor.address || latestPlan.guarantorAddress || '—'}</small></div></div>
+                    </section>
+                  </div>}
 
                   <div className="khata-metrics">
                     <div className="khata-metric"><small>Combined plan amount</small><b>{money(totalAmount)}</b></div>

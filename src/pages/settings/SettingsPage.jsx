@@ -1,6 +1,6 @@
 import NumericInput from '../../components/NumericInput.jsx';
 import React, { useState } from 'react';
-import { apiRequest, money, num } from '../../api.js';
+import { apiRequest, setSessionToken, money, num } from '../../api.js';
 
 export default function SettingsView({ shop = {}, user = {}, users = [], onRefresh, notify, showAlert }) {
   const isOwner = user?.role === 'owner';
@@ -92,7 +92,7 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
     e.preventDefault();
     try {
       if (editingUser) {
-        await apiRequest(`/users/${editingUser.id}`, {
+        const result = await apiRequest(`/users/${editingUser.id}`, {
           method: 'PUT',
           body: {
             name: uName,
@@ -100,6 +100,7 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
             newPassword: uPassword || undefined,
           },
         });
+        if (result.token) setSessionToken(result.token);
         notify(`Updated user ${uName}.`);
       } else {
         await apiRequest('/users', {

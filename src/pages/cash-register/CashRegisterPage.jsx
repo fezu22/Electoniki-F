@@ -297,7 +297,7 @@ export default function CashRegisterPage({ data, onRefresh, notify, showAlert })
       <section className="cash-register-history-panel">
         <div className="cash-register-history-head">
           <div className="cash-register-history-icon"><History size={18} /></div>
-          <div><h3>Recent daily opening & closing</h3><p>Opening and closing reconciliations for this shop.</p></div>
+          <div><h3>Recent daily opening & closing</h3><p>Daily sessions stay in their original date, even if a closing count is missed.</p></div>
           <span>{sessions.length} {sessions.length === 1 ? 'session' : 'sessions'}</span>
         </div>
         {sessions.length ? (
@@ -305,6 +305,7 @@ export default function CashRegisterPage({ data, onRefresh, notify, showAlert })
             <thead><tr><th>Opened</th><th>Opened by</th><th>Opening float</th><th>Cash received</th><th>Cash paid out</th><th>Expected cash</th><th>Actual count</th><th>Difference</th><th>Status</th></tr></thead>
             <tbody>{sessions.map((session) => {
               const isOpen = session.status === 'open';
+              const autoClosed = session.autoClosed === true;
               const expectedAmount = isOpen ? current?.expectedClosingAmount : session.expectedClosingAmount;
               const difference = Number(session.difference || 0);
               return (
@@ -315,9 +316,9 @@ export default function CashRegisterPage({ data, onRefresh, notify, showAlert })
                   <td><b>{money(session.cashIn)}</b><small className="cash-register-breakdown-text">{formatMovementBreakdown(session.cashInByType) || '—'}</small></td>
                   <td><b>{money(session.cashOut)}</b><small className="cash-register-breakdown-text">{formatMovementBreakdown(session.cashOutByType) || '—'}</small></td>
                   <td>{money(expectedAmount)}</td>
-                  <td>{isOpen ? '—' : money(session.actualClosingAmount)}</td>
-                  <td className={isOpen ? '' : Number(expectedAmount) < 0 ? 'cash-register-table-review' : difference < 0 ? 'cash-register-table-short' : difference > 0 ? 'cash-register-table-excess' : 'cash-register-table-matched'}>{isOpen ? '—' : Number(expectedAmount) < 0 ? `Ledger below zero ${money(Math.abs(Number(expectedAmount)))}` : `${difference > 0 ? '+' : ''}${money(difference)}`}</td>
-                  <td><span className={`cash-register-history-status ${isOpen ? 'open' : Number(expectedAmount) < 0 ? 'review' : 'closed'}`}>{isOpen ? 'Open' : Number(expectedAmount) < 0 ? 'Needs review' : 'Closed'}</span></td>
+                  <td>{isOpen ? '-' : autoClosed ? 'Not counted' : money(session.actualClosingAmount)}</td>
+                  <td className={isOpen ? '' : autoClosed || Number(expectedAmount) < 0 ? 'cash-register-table-review' : difference < 0 ? 'cash-register-table-short' : difference > 0 ? 'cash-register-table-excess' : 'cash-register-table-matched'}>{isOpen ? '-' : autoClosed ? 'Not reconciled' : Number(expectedAmount) < 0 ? `Ledger below zero ${money(Math.abs(Number(expectedAmount)))}` : `${difference > 0 ? '+' : ''}${money(difference)}`}</td>
+                  <td><span className={`cash-register-history-status ${isOpen ? 'open' : autoClosed || Number(expectedAmount) < 0 ? 'review' : 'closed'}`}>{isOpen ? 'Open' : autoClosed ? 'Auto closed' : Number(expectedAmount) < 0 ? 'Needs review' : 'Closed'}</span></td>
                 </tr>
               );
             })}</tbody>

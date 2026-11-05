@@ -75,25 +75,95 @@ function compressInstallmentPhoto(file) {
 
 function InstallmentPhotoField({ name, label, value = '' }) {
   const inputRef = useRef(null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const cameraRequestRef = useRef(0);
   const [preview, setPreview] = useState(value);
   const [cleared, setCleared] = useState(false);
+  const [captured, setCaptured] = useState('');
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const stopCamera = () => {
+    cameraRequestRef.current += 1;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setCameraOpen(false);
+  };
+  useEffect(() => () => { cameraRequestRef.current += 1; streamRef.current?.getTracks().forEach((track) => track.stop()); }, []);
+  useEffect(() => () => { if (preview?.startsWith('blob:')) URL.revokeObjectURL(preview); }, [preview]);
+  useEffect(() => {
+    if (cameraOpen && videoRef.current && streamRef.current) videoRef.current.srcObject = streamRef.current;
+  }, [cameraOpen]);
+  const openCamera = async () => {
+    setCameraError('');
+    const request = ++cameraRequestRef.current;
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera is unavailable in this browser.');
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      if (request !== cameraRequestRef.current) { stream.getTracks().forEach((track) => track.stop()); return; }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = stream;
+      setCameraOpen(true);
+    } catch (error) {
+      if (request === cameraRequestRef.current) setCameraError('Could not open the camera. Check camera permissions or upload a photo.');
+    }
+  };
+  const takePhoto = () => {
+    const video = videoRef.current;
+    if (!video?.videoWidth || !video?.videoHeight) { setCameraError('Camera is not ready yet. Please try again.'); return; }
+    const canvas = document.createElement('canvas');
+    const scale = Math.min(1, 1200 / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const photo = canvas.toDataURL('image/jpeg', 0.78);
+    if (inputRef.current) inputRef.current.value = '';
+    setCaptured(photo);
+    setPreview(photo);
+    setCleared(false);
+    stopCamera();
+    setChooserOpen(false);
+  };
   return (
     <div className="installment-photo-field">
-      <label className="field">
-        {label} (optional)
+      <div className="field">
+        <span>{label} (optional)</span>
+        <button type="button" className="btn ghost small" onClick={() => { setCameraError(''); setChooserOpen(true); }}>Add image</button>
         <input
           ref={inputRef}
           type="file"
           name={name}
+          hidden
           accept="image/jpeg,image/png,image/webp"
-          capture="environment"
           onChange={(event) => {
             const file = event.target.files?.[0];
-            setPreview(file ? URL.createObjectURL(file) : value);
-            setCleared(false);
+            if (file) {
+              setPreview(URL.createObjectURL(file));
+              setCaptured('');
+              setCleared(false);
+              setChooserOpen(false);
+            }
           }}
         />
-      </label>
+      </div>
+      <input type="hidden" name={`${name}Captured`} value={captured} />
+      {chooserOpen && (
+        <div role="presentation" className="installment-photo-dialog-backdrop">
+          <div role="dialog" aria-modal="true" aria-label={`Add ${label}`} className="installment-photo-dialog">
+            <h3>Add {label}</h3>
+            {!cameraOpen ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+              <button type="button" className="btn ghost small" onClick={openCamera}>Capture with camera</button>
+              <button type="button" className="btn ghost small" onClick={() => inputRef.current?.click()}>Upload image</button>
+            </div> : <div>
+              <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', maxWidth: 320, borderRadius: 8 }} />
+              <div><button type="button" className="btn ghost small" onClick={takePhoto}>Capture photo</button>{' '}<button type="button" className="btn ghost small" onClick={stopCamera}>Back</button></div>
+            </div>}
+            {cameraError && <p role="alert">{cameraError}</p>}
+            <button type="button" className="btn ghost small" style={{ marginTop: 16 }} onClick={() => { stopCamera(); setChooserOpen(false); }}>Close</button>
+          </div>
+        </div>
+      )}
       <input type="hidden" name={`${name}Clear`} value={cleared ? 'true' : 'false'} />
       {preview && (
         <div className="installment-photo-preview">
@@ -104,6 +174,7 @@ function InstallmentPhotoField({ name, label, value = '' }) {
             onClick={() => {
               if (inputRef.current) inputRef.current.value = '';
               setPreview('');
+              setCaptured('');
               setCleared(true);
             }}
           >
@@ -174,31 +245,18 @@ const PAGE_GROUPS = [
   { label: 'Finance & Expenses', pages: [['finance', 'Finance & Banks'], ['expenses', 'Shop Expenses'], ['cash-register', 'Daily Opening & Closing']] },
 ];
 
+const emptyWorkspace = () => ({
+  shop: { name: '', whatsapp: '', currency: 'PKR' }, user: {}, users: [], products: [], customers: [],
+  suppliers: [], sales: [], installmentPlans: [], installmentPayments: [], stockReceipts: [], stockMovements: [],
+  expenses: [], bankAccounts: [], financialTransactions: [], customerReturns: [], heldOrders: [], auditEvents: [], summary: {},
+});
+
 export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
 
   // Tenant Workspace Data
-  const [data, setData] = useState({
-    shop: { name: 'ElectroHub Electronics', whatsapp: '+923005552711', currency: 'PKR' },
-    user: { name: 'Faraz · Admin', role: 'owner' },
-    users: [],
-    products: [],
-    customers: [],
-    suppliers: [],
-    sales: [],
-    installmentPlans: [],
-    installmentPayments: [],
-    stockReceipts: [],
-    stockMovements: [],
-    expenses: [],
-    bankAccounts: [],
-    financialTransactions: [],
-    customerReturns: [],
-    heldOrders: [],
-    auditEvents: [],
-    summary: {},
-  });
+  const [data, setData] = useState(emptyWorkspace);
 
   // Navigation & UI Shell State
   const [page, setPage] = useState('sale');
@@ -240,6 +298,8 @@ export default function App() {
   const [newPrice, setNewPrice] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [savingSale, setSavingSale] = useState(false);
+  const saleSaveInFlight = useRef(false);
+  const saleRequestKey = useRef('');
   const [resumedHeldOrderId, setResumedHeldOrderId] = useState('');
   const workspaceRefreshSequence = useRef(0);
 
@@ -253,8 +313,10 @@ export default function App() {
   const [activeKhataPlan, setActiveKhataPlan] = useState(null);
   const [khataPayAmount, setKhataPayAmount] = useState('');
   const [khataPayMethod, setKhataPayMethod] = useState('cash');
-  const [khataPayBank, setKhataPayBank] = useState('HBL');
+  const [khataPayBank, setKhataPayBank] = useState('');
   const [khataPayNote, setKhataPayNote] = useState('');
+  const [savingKhataPayment, setSavingKhataPayment] = useState(false);
+  const khataPaymentInFlight = useRef(false);
   const [savingReminderSetting, setSavingReminderSetting] = useState(false);
 
   // Stock & Products state
@@ -322,9 +384,9 @@ export default function App() {
       try {
         const me = await apiRequest('/auth/me');
         if (me.authenticated) {
-          setAuthenticated(true);
-          setData((current) => ({ ...current, shop: me.shop, user: me.user }));
+          setData({ ...emptyWorkspace(), shop: me.shop, user: me.user });
           if (me.user?.role !== 'super_admin') await refreshWorkspace(me.user?.role);
+          setAuthenticated(true);
         }
       } catch (err) {
         console.error('Auth check error:', err);
@@ -336,19 +398,42 @@ export default function App() {
   }, []);
 
   async function handleAuthenticated(session) {
-    setAuthenticated(true);
-    if (session?.user) setData((current) => ({ ...current, user: session.user, shop: session.shop || current.shop }));
+    if (session?.user) setData({ ...emptyWorkspace(), user: session.user, shop: session.shop || emptyWorkspace().shop });
     if (session?.user?.role !== 'super_admin') await refreshWorkspace(session?.user?.role);
+    setAuthenticated(true);
   }
 
   async function handleLogout() {
+    const logoutRequest = apiRequest('/auth/logout', { method: 'POST' }).catch(() => {});
+    workspaceRefreshSequence.current += 1;
+    setSessionToken(null);
+    setAuthenticated(false);
+    setData(emptyWorkspace());
+    setCart([]);
+    saleRequestKey.current = '';
+    setCustomerId('walkin');
+    setCustomerInfo(null);
+    setSalePhone(''); setSaleCnic(''); setSaleAddress(''); setSalePadNo('');
+    setResumedHeldOrderId('');
+    setBillDiscount(0);
+    setSaleType('cash');
+    setPlan({ months: 12, advance: 15000, percent: 10 });
+    setSalePayment({ method: 'cash', cash: '0', bank: '0', bankName: '', bankAccount: '' });
+    setProductSearch(''); setSelectedSearchProductId(''); setNewQty('1'); setNewPrice('');
+    setShowSuggestions(false);
+    setPage('sale');
+    setActiveKhataPlan(null);
+    setShowProductModal(false); setEditingProduct(null);
+    setShowNewCustomerModal(false); setEditingCustomerRecord(null);
+    setShowInstallmentCustomerModal(false); setShowAddInstallmentModal(false);
+    setPreviewInvoice(null);
+    setWhatsAppShareInfo(null);
+    setSidebarOpen(false);
     try {
-      await apiRequest('/auth/logout', { method: 'POST' });
+      await logoutRequest;
     } catch {
       // ignore
     }
-    setSessionToken(null);
-    setAuthenticated(false);
   }
 
   // Current selected customer helper
@@ -375,6 +460,7 @@ export default function App() {
 
   function resetSaleAmounts() {
     setBillDiscount(0);
+    saleRequestKey.current = '';
     setSalePayment((current) => ({ ...current, method: 'cash', cash: '0', bank: '0' }));
   }
 
@@ -522,6 +608,7 @@ export default function App() {
   }
 
   async function handleSaveSale() {
+    if (saleSaveInFlight.current) return;
     if (cart.length === 0) {
       showAlert('Cart is empty', 'Add an item to the cart before saving this sale.', 'warning');
       return;
@@ -539,12 +626,17 @@ export default function App() {
       return;
     }
 
+    saleSaveInFlight.current = true;
     setSavingSale(true);
+    if (!saleRequestKey.current) {
+      saleRequestKey.current = resumedHeldOrderId ? `sale-held-${resumedHeldOrderId}` :
+        `sale-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+    }
     try {
       const res = await apiRequest('/sales', {
         method: 'POST',
         body: {
-          idempotencyKey: resumedHeldOrderId ? `sale-held-${resumedHeldOrderId}` : `sale-${Date.now()}`,
+          idempotencyKey: saleRequestKey.current,
           heldOrderId: resumedHeldOrderId || undefined,
           customerId,
           customerInfo: customerInfo || {
@@ -562,16 +654,21 @@ export default function App() {
           salePayment,
         },
       });
-      await refreshWorkspace();
       setPreviewInvoice({ ...res.sale, padNo: res.sale.padNo || salePadNo.trim() });
       setCart([]);
       setResumedHeldOrderId('');
       setSalePadNo('');
       resetSaleAmounts();
       notify(`Sale ${res.sale.invoiceNo} saved!`);
+      try {
+        await refreshWorkspace();
+      } catch {
+        showAlert('Sale saved', `Invoice ${res.sale.invoiceNo} was saved, but the workspace could not refresh. Reload the page to see updated balances.`, 'warning');
+      }
     } catch (err) {
       showAlert('Cannot complete sale', err.message, 'warning');
     } finally {
+      saleSaveInFlight.current = false;
       setSavingSale(false);
     }
   }
@@ -690,7 +787,7 @@ export default function App() {
   const newSalePageContext = { data, page, cart, setCart, customerId, setCustomerId, salePhone, setSalePhone, saleCnic, setSaleCnic, saleAddress, setSaleAddress, salePadNo, setSalePadNo, customerInfo, setCustomerInfo, billDiscount, setBillDiscount, saleType, setSaleType, plan, setPlan, salePayment, setSalePayment, resumedHeldOrderId, setResumedHeldOrderId, productSearch, setProductSearch, setSelectedSearchProductId, newQty, setNewQty, newPrice, setNewPrice, showSuggestions, setShowSuggestions, savingSale, setShowInstallmentCustomerModal, setShowNewCustomerModal, setEditingCustomerRecord, showAlert, gross, appliedDiscount, discounted, add, finalTotal, resetSaleAmounts, cashRec, advanceOrPaid, remainingBalance, excessPayment, monthlyInstallment, handleAddItemToCart, updateCartItemField, handleHoldBill, handleSaveSale, dateText, matchingSearchProducts };
   const dashboardPageContext = { data, page, setPage, dashPeriod, setDashPeriod, dashDate, setDashDate, showAlert };
   const installmentKhataPageContext = { data, page, plan, khataSearch, setKhataSearch, setShowAddInstallmentModal, setActiveKhataPlan, setKhataPayAmount, dateText };
-  const stockProductsPageContext = { optionalWarrantyValue, data, page, setPage, inventorySearch, setInventorySearch, inventoryChip, setInventoryChip, stockTab, setStockTab, setEditingProduct, setShowProductModal };
+  const stockProductsPageContext = { optionalWarrantyValue, data, page, setPage, inventorySearch, setInventorySearch, inventoryChip, setInventoryChip, stockTab, setStockTab, setEditingProduct, setShowProductModal, showAlert };
   return (
     <>
       <div className="shell" id="shell">
@@ -941,6 +1038,7 @@ export default function App() {
               <BillsView
                 sales={data.sales}
                 installmentPlans={data.installmentPlans}
+                bankAccounts={data.bankAccounts}
                 shop={data.shop}
                 onOpenInvoice={(b, onReceiveDue) => setPreviewInvoice({ ...b, onReceiveDue })}
                 onNewSale={() => setPage('sale')}
@@ -1110,15 +1208,17 @@ export default function App() {
             }
           }}
         >
-          <div className="modal" role="dialog" aria-modal="true">
+          <div className="modal installment-customer-modal" role="dialog" aria-modal="true" aria-labelledby="installment-details-title">
             <div className="modal-head">
               <div>
-                <h2>Installment Customer Details</h2>
+                <span className="installment-details-eyebrow">INSTALLMENT SALE</span>
+                <h2 id="installment-details-title">Customer & guarantor</h2>
                 <p>Confirm customer and guarantor information before saving the plan.</p>
               </div>
               <button
                 type="button"
                 className="icon-btn"
+                aria-label="Close customer details"
                 onClick={() => {
                   if (!customerInfo) setSaleType('cash');
                   setShowInstallmentCustomerModal(false);
@@ -1135,12 +1235,12 @@ export default function App() {
                   const customerPhotoFile = fd.get('customerPhoto');
                   const guarantorPhotoFile = fd.get('guarantorPhoto');
                   const [customerPhoto, guarantorPhoto] = await Promise.all([
-                    customerPhotoFile?.size
+                    fd.get('customerPhotoCaptured') || (customerPhotoFile?.size
                       ? compressInstallmentPhoto(customerPhotoFile)
-                      : fd.get('customerPhotoClear') === 'true' ? '' : customerInfo?.customerPhoto || '',
-                    guarantorPhotoFile?.size
+                      : fd.get('customerPhotoClear') === 'true' ? '' : customerInfo?.customerPhoto || ''),
+                    fd.get('guarantorPhotoCaptured') || (guarantorPhotoFile?.size
                       ? compressInstallmentPhoto(guarantorPhotoFile)
-                      : fd.get('guarantorPhotoClear') === 'true' ? '' : customerInfo?.guarantorPhoto || '',
+                      : fd.get('guarantorPhotoClear') === 'true' ? '' : customerInfo?.guarantorPhoto || ''),
                   ]);
                   const info = {
                     id: customerId,
@@ -1168,7 +1268,7 @@ export default function App() {
               }}
             >
               <div className="modal-body">
-                <div className="modal-section">CUSTOMER INFORMATION</div>
+                <div className="installment-section-heading"><span>01</span><div><h3>Customer information</h3><p>Enter the customer’s contact and identification details.</p></div></div>
                 <div className="fields">
                   <label className="field">
                     Customer name
@@ -1228,9 +1328,7 @@ export default function App() {
                   />
                 </div>
 
-                <div className="modal-section" style={{ marginTop: 18 }}>
-                  GUARANTOR INFORMATION
-                </div>
+                <div className="installment-section-heading"><span>02</span><div><h3>Guarantor information</h3><p>Add the guarantor’s contact details and photo.</p></div></div>
                 <div className="fields">
                   <label className="field">
                     Guarantor name (optional)
@@ -1280,7 +1378,7 @@ export default function App() {
                   Cancel
                 </button>
                 <button type="submit" className="btn">
-                  Save customer & plan
+                  Save details
                 </button>
               </div>
             </form>
@@ -1607,6 +1705,13 @@ export default function App() {
                 <form
                   onSubmit={async (e) => {
                     e.preventDefault();
+                    if (khataPaymentInFlight.current) return;
+                    if (khataPayMethod === 'bank' && !data.bankAccounts.some((bank) => bank.active !== false && bank.bankName === khataPayBank)) {
+                      showAlert('Choose a bank account', 'Select an active bank account for this payment.', 'warning');
+                      return;
+                    }
+                    khataPaymentInFlight.current = true;
+                    setSavingKhataPayment(true);
                     try {
                       const res = await apiRequest(`/installments/${activeKhataPlan.id}/pay`, {
                         method: 'POST',
@@ -1614,18 +1719,22 @@ export default function App() {
                           idempotencyKey: `khpay-${activeKhataPlan.id}-${Date.now()}`,
                           amount: num(khataPayAmount),
                           method: khataPayMethod,
-                          bankName: khataPayBank,
+                          bankName: khataPayMethod === 'bank' ? khataPayBank : '',
                           note: khataPayNote,
                         },
                       });
                       setActiveKhataPlan(res.plan);
                       setKhataPayNote('');
+                      setKhataPayAmount('');
                       await refreshWorkspace();
                       notify(
                         `Recorded ${money(res.payment.amount)} installment receipt (${res.payment.receiptNo}).`
                       );
                     } catch (err) {
                       showAlert('Payment error', err.message, 'warning');
+                    } finally {
+                      khataPaymentInFlight.current = false;
+                      setSavingKhataPayment(false);
                     }
                   }}
                   style={{
@@ -1663,10 +1772,12 @@ export default function App() {
                       <label className="field">
                         Bank Account
                         <select
+                          required
                           value={khataPayBank}
                           onChange={(e) => setKhataPayBank(e.target.value)}
                         >
-                          {data.bankAccounts.map((b) => (
+                          <option value="">Select an account</option>
+                          {data.bankAccounts.filter((b) => b.active !== false).map((b) => (
                             <option key={b.id} value={b.bankName}>
                               {b.bankName}
                             </option>
@@ -1684,7 +1795,7 @@ export default function App() {
                     </label>
                   </div>
                   <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-                    <button type="submit" className="btn">
+                    <button type="submit" className="btn" disabled={savingKhataPayment}>
                       Record Payment & Update Khata
                     </button>
                   </div>

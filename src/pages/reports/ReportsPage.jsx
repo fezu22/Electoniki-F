@@ -18,19 +18,26 @@ export default function ReportsView({
 
   const inRange = (dateStr) => {
     if (!fromDate && !toDate) return true;
-    const d = new Date(dateStr || Date.now());
-    if (fromDate && d < new Date(fromDate)) return false;
-    if (toDate) {
-      const end = new Date(toDate);
-      end.setHours(23, 59, 59, 999);
-      if (d > end) return false;
-    }
-    return true;
+    if (!dateStr) return false;
+    const value = String(dateStr);
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) return false;
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(parsed);
+    return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
   };
 
   const filteredSales = sales.filter((s) => inRange(s.createdAt));
   const filteredExpenses = expenses.filter((e) => inRange(e.date || e.createdAt));
   const filteredReturns = customerReturns.filter((r) => inRange(r.createdAt));
+  const reportCogs = filteredSales.reduce((sum, bill) => sum + (bill.totalCost !== undefined
+    ? num(bill.totalCost) : (bill.items || []).reduce((total, item) => total + num(item.cost) * num(item.qty), 0)), 0);
+  const reportNetSales = filteredSales.reduce((sum, bill) => sum + num(bill.total), 0) - filteredReturns.reduce((sum, item) => sum + num(item.totalReturnAmount), 0);
+  const reportRestoredCost = filteredReturns.reduce((sum, item) => sum + num(item.totalCostRestored), 0);
+  const reportExpenses = filteredExpenses.reduce((sum, item) => sum + num(item.amount), 0);
+  const reportGrossProfit = reportNetSales - Math.max(0, reportCogs - reportRestoredCost);
+  const reportNetProfit = reportGrossProfit - reportExpenses;
 
   function exportReportCsv() {
     let headers = [];
@@ -53,7 +60,7 @@ export default function ReportsView({
     } else if (activeReport === 'stock' || activeReport === 'low_stock') {
       const list =
         activeReport === 'low_stock'
-          ? products.filter((p) => num(p.stock) <= num(p.reorderThreshold || 5))
+          ? products.filter((p) => num(p.stock) <= num(p.reorderThreshold ?? 5))
           : products;
       headers = ['Product', 'SKU', 'Category', 'Stock', 'Unit Cost', 'Sale Price', 'Stock Cost Value'];
       rows = list.map((p) => [
@@ -78,6 +85,13 @@ export default function ReportsView({
         p.nextDueDate,
         p.status,
       ]);
+    } else if (activeReport === 'customers') {
+      headers = ['Customer', 'Phone', 'Invoices Count', 'Total Billed', 'Total Paid', 'Outstanding Balance'];
+      rows = customers.map((customer) => {
+        const bills = sales.filter((bill) => bill.customerId === customer.id || bill.customer === customer.name);
+        return [customer.name, customer.phone, bills.length, bills.reduce((sum, bill) => sum + num(bill.total), 0),
+          bills.reduce((sum, bill) => sum + num(bill.paid), 0), bills.reduce((sum, bill) => sum + num(bill.balance), 0)];
+      });
     } else if (activeReport === 'suppliers') {
       headers = ['Supplier', 'Contact', 'Phone', 'Balance Payable', 'Last Purchase'];
       rows = suppliers.map((s) => [s.name, s.contactPerson, s.phone, num(s.balancePayable), s.lastPurchaseDate]);
@@ -97,7 +111,11 @@ export default function ReportsView({
     }
 
     const csvContent = [headers, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+      .map((row) => row.map((cell) => {
+        const value = String(cell ?? '');
+        const safe = typeof cell === 'string' && /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
+        return `"${safe.replace(/"/g, '""')}"`;
+      }).join(','))
       .join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -130,24 +148,24 @@ export default function ReportsView({
       <div className="mod-summary">
         <div>
           <small>Net Sales Revenue</small>
-          <b>{money(summary.netSales)}</b>
+          <b>{money(reportNetSales)}</b>
         </div>
         <div>
           <small>Cost of Goods Sold (COGS)</small>
-          <b>{money(summary.cogs)}</b>
+          <b>{money(reportCogs)}</b>
         </div>
         <div>
           <small>Gross Profit (After Returns)</small>
-          <b style={{ color: '#12708f' }}>{money(summary.grossProfit)}</b>
+          <b style={{ color: '#12708f' }}>{money(reportGrossProfit)}</b>
         </div>
         <div>
           <small>Recorded Shop Expenses</small>
-          <b style={{ color: '#b44e4b' }}>{money(summary.expensesTotal)}</b>
+          <b style={{ color: '#b44e4b' }}>{money(reportExpenses)}</b>
         </div>
         <div>
           <small>Net Shop Profit</small>
-          <b style={{ color: summary.netProfit >= 0 ? '#168365' : '#c14f52' }}>
-            {money(summary.netProfit)}
+          <b style={{ color: reportNetProfit >= 0 ? '#168365' : '#c14f52' }}>
+            {money(reportNetProfit)}
           </b>
         </div>
       </div>
@@ -377,7 +395,7 @@ export default function ReportsView({
               </thead>
               <tbody>
                 {(activeReport === 'low_stock'
-                  ? products.filter((p) => num(p.stock) <= num(p.reorderThreshold || 5))
+                  ? products.filter((p) => num(p.stock) <= num(p.reorderThreshold ?? 5))
                   : products
                 ).map((p) => (
                   <tr key={p.id}>

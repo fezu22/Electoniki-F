@@ -86,10 +86,12 @@ export default function DashboardPage({ app }) {
                     </div>
                   </section>
                   <section className="card dash-kpi">
-                    <div className="dash-kpi-head">Cash in hand</div>
-                    <div className="dash-kpi-value">{money(data.summary.cashInHand)}</div>
+                    <div className="dash-kpi-head">Today's drawer cash</div>
+                    <div className="dash-kpi-value">{data.summary.cashInHand == null ? 'Not tracked' : money(data.summary.cashInHand)}</div>
                     <div className="dash-kpi-note">
-                      Current balance snapshot: opening + inflows - outflows
+                      {data.summary.cashInHand == null
+                        ? 'Open today’s cash register to record the opening count.'
+                        : 'Today’s opening count + cash received − cash paid out'}
                     </div>
                   </section>
                   <section className="card dash-kpi">
@@ -250,7 +252,7 @@ export default function DashboardPage({ app }) {
                     <div className="dash-list">
                       {(() => {
                         const low = data.products.filter(
-                          (p) => num(p.stock) <= num(p.reorderThreshold || 5)
+                          (p) => num(p.stock) <= num(p.reorderThreshold ?? 5)
                         );
                         if (low.length === 0) {
                           return (

@@ -1,8 +1,8 @@
 import NumericInput from '../../components/NumericInput.jsx';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { apiRequest, money, num } from '../../api.js';
 
-export default function BillsView({ sales = [], installmentPlans = [], shop, onOpenInvoice, onNewSale, onRefresh, notify, showAlert }) {
+export default function BillsView({ sales = [], installmentPlans = [], bankAccounts = [], shop, onOpenInvoice, onNewSale, onRefresh, notify, showAlert }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -10,6 +10,9 @@ export default function BillsView({ sales = [], installmentPlans = [], shop, onO
   const [receiveBill, setReceiveBill] = useState(null);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
+  const [payBank, setPayBank] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
+  const paymentInFlight = useRef(false);
 
   const planByInvoice = new Map(installmentPlans.map((plan) => [String(plan.invoiceNo || ''), plan]));
 
@@ -47,6 +50,13 @@ export default function BillsView({ sales = [], installmentPlans = [], shop, onO
       showAlert('Check amount', `Enter an amount up to ${money(receiveBill.balance)}.`, 'warning');
       return;
     }
+    if (payMethod === 'bank' && !bankAccounts.some((bank) => bank.active !== false && bank.bankName === payBank)) {
+      showAlert('Choose a bank account', 'Select an active bank account for this payment.', 'warning');
+      return;
+    }
+    if (paymentInFlight.current) return;
+    paymentInFlight.current = true;
+    setSavingPayment(true);
     try {
       await apiRequest('/finance/transactions', {
         method: 'POST',
@@ -55,6 +65,7 @@ export default function BillsView({ sales = [], installmentPlans = [], shop, onO
           direction: 'in',
           amount: amt,
           method: payMethod,
+          bankName: payMethod === 'bank' ? payBank : '',
           partyName: receiveBill.customer,
           relatedId: receiveBill.invoiceNo,
           note: `Balance received on ${receiveBill.invoiceNo}`,
@@ -65,6 +76,9 @@ export default function BillsView({ sales = [], installmentPlans = [], shop, onO
       notify(`Received ${money(amt)} on ${receiveBill.invoiceNo}.`);
     } catch (err) {
       showAlert('Error', err.message, 'warning');
+    } finally {
+      paymentInFlight.current = false;
+      setSavingPayment(false);
     }
   }
 
@@ -217,6 +231,8 @@ export default function BillsView({ sales = [], installmentPlans = [], shop, onO
                             ? () => {
                                 setReceiveBill(b);
                                 setPayAmount(String(b.balance));
+                                setPayMethod('cash');
+                                setPayBank('');
                               }
                             : null)}
                         >
@@ -260,6 +276,13 @@ export default function BillsView({ sales = [], installmentPlans = [], shop, onO
                       onChange={(e) => setPayAmount(e.target.value)}
                     />
                   </label>
+                  {payMethod === 'bank' && <label className="field">
+                    Bank account
+                    <select required value={payBank} onChange={(e) => setPayBank(e.target.value)}>
+                      <option value="">Select an account</option>
+                      {bankAccounts.filter((bank) => bank.active !== false).map((bank) => <option key={bank.id} value={bank.bankName}>{bank.bankName}</option>)}
+                    </select>
+                  </label>}
                   <label className="field">
                     Payment Method
                     <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
@@ -273,7 +296,7 @@ export default function BillsView({ sales = [], installmentPlans = [], shop, onO
                 <button type="button" className="btn ghost" onClick={() => setReceiveBill(null)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn">
+                <button type="submit" className="btn" disabled={savingPayment}>
                   Record Payment
                 </button>
               </div>

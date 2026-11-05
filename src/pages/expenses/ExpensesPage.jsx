@@ -1,5 +1,5 @@
 import NumericInput from '../../components/NumericInput.jsx';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { apiRequest, money, num } from '../../api.js';
 
 export default function ExpensesView({ expenses = [], bankAccounts = [], onRefresh, notify, showAlert }) {
@@ -14,9 +14,14 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
   const [date, setDate] = useState(today);
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [bankName, setBankName] = useState('HBL');
+  const [bankName, setBankName] = useState('');
   const [description, setDescription] = useState('');
   const [attachmentName, setAttachmentName] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [removeAttachment, setRemoveAttachment] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const saveInFlight = useRef(false);
+  const receiptInput = useRef(null);
 
   function openNewExpense() {
     setEditingExpense(null);
@@ -25,8 +30,11 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
     setDate(today);
     setAmount('');
     setPaymentMethod('Cash');
+    setBankName('');
     setDescription('');
     setAttachmentName('');
+    setAttachmentFile(null);
+    setRemoveAttachment(false);
     setShowModal(true);
   }
 
@@ -37,15 +45,36 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
     setDate(exp.date || today);
     setAmount(String(exp.amount));
     setPaymentMethod(exp.paymentMethod || 'Cash');
-    setBankName(exp.bankName || 'HBL');
+    setBankName(exp.bankName || '');
     setDescription(exp.description || '');
-    setAttachmentName(exp.attachmentName || '');
+    setAttachmentName(exp.hasAttachment ? exp.attachmentName || '' : '');
+    setAttachmentFile(null);
+    setRemoveAttachment(false);
     setShowModal(true);
   }
 
   async function handleSaveExpense(e) {
     e.preventDefault();
+    if (paymentMethod === 'Bank' && !bankAccounts.some((bank) => bank.active !== false && bank.bankName === bankName)) {
+      showAlert('Choose a bank account', 'Select an active bank account for this expense.', 'warning');
+      return;
+    }
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSaving(true);
     try {
+      let attachmentUpdate = {};
+      if (attachmentFile) {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('The receipt could not be read.'));
+          reader.readAsDataURL(attachmentFile);
+        });
+        attachmentUpdate = { attachmentName: attachmentFile.name, attachmentDataUrl: dataUrl };
+      } else if (removeAttachment) {
+        attachmentUpdate = { attachmentName: '', attachmentDataUrl: '' };
+      }
       if (editingExpense) {
         await apiRequest(`/expenses/${editingExpense.id}`, {
           method: 'PUT',
@@ -57,6 +86,7 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
             paymentMethod,
             bankName,
             description,
+            ...attachmentUpdate,
           },
         });
         notify('Expense updated with audit history.');
@@ -71,7 +101,7 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
             paymentMethod,
             bankName,
             description,
-            attachmentName,
+            ...attachmentUpdate,
           },
         });
         notify('Shop expense recorded.');
@@ -80,6 +110,26 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
       await onRefresh();
     } catch (err) {
       showAlert('Error', err.message, 'warning');
+    } finally {
+      saveInFlight.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function downloadReceipt(expense) {
+    try {
+      const receipt = await apiRequest(`/expenses/${encodeURIComponent(expense.id)}/attachment`);
+      const blob = await (await fetch(receipt.dataUrl)).blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = receipt.name || 'receipt';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      showAlert('Could not download receipt', err.message, 'warning');
     }
   }
 
@@ -166,6 +216,7 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
                   </td>
                   <td>
                     <div className="inline">
+                      {exp.hasAttachment && <button type="button" className="btn ghost small" onClick={() => downloadReceipt(exp)}>Receipt</button>}
                       <button
                         type="button"
                         className="btn ghost small"
@@ -257,8 +308,9 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
                   {paymentMethod === 'Bank' && (
                     <label className="field">
                       Bank Account
-                      <select value={bankName} onChange={(e) => setBankName(e.target.value)}>
-                        {bankAccounts.map((b) => (
+                      <select required value={bankName} onChange={(e) => setBankName(e.target.value)}>
+                        <option value="">Select an account</option>
+                        {bankAccounts.filter((b) => b.active !== false).map((b) => (
                           <option key={b.id} value={b.bankName}>
                             {b.bankName} ({money(b.balance)})
                           </option>
@@ -277,10 +329,23 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
                   <label className="field full">
                     Optional Receipt Image Attachment
                     <input
+                      ref={receiptInput}
                       type="file"
-                      accept="image/*"
-                      onChange={(e) => setAttachmentName(e.target.files?.[0]?.name || '')}
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024)) {
+                          e.target.value = '';
+                          showAlert('Check receipt', 'Choose a JPEG, PNG, or WebP image up to 10 MB.', 'warning');
+                          return;
+                        }
+                        setAttachmentFile(file || null);
+                        setAttachmentName(file?.name || (editingExpense?.hasAttachment ? editingExpense.attachmentName : ''));
+                        setRemoveAttachment(false);
+                      }}
                     />
+                    {attachmentName && <small>{attachmentName}</small>}
+                    {(attachmentFile || (editingExpense?.hasAttachment && !removeAttachment)) && <button type="button" className="btn ghost small" onClick={() => { setAttachmentFile(null); setAttachmentName(''); setRemoveAttachment(true); if (receiptInput.current) receiptInput.current.value = ''; }}>Remove receipt</button>}
                   </label>
                 </div>
               </div>
@@ -288,7 +353,7 @@ export default function ExpensesView({ expenses = [], bankAccounts = [], onRefre
                 <button type="button" className="btn ghost" onClick={() => setShowModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn">
+                <button type="submit" className="btn" disabled={saving}>
                   {editingExpense ? 'Update Expense' : 'Save Expense'}
                 </button>
               </div>

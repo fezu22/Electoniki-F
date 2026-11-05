@@ -55,8 +55,8 @@ export default function FinanceView({
 
       <div className="mod-summary">
         <div>
-          <small>Cash in Hand</small>
-          <b style={{ color: '#168365' }}>{money(summary.cashInHand)}</b>
+          <small>Today’s Drawer Cash</small>
+          <b style={{ color: '#168365' }}>{summary.cashInHand == null ? 'Not tracked' : money(summary.cashInHand)}</b>
         </div>
         <div>
           <small>Total Bank Balances</small>
