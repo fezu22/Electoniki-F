@@ -145,7 +145,6 @@ export default function BillsView({ sales = [], installmentPlans = [], bankAccou
             >
               <option value="all">All Statuses</option>
               <option value="paid">Fully Paid</option>
-              <option value="unpaid">Has Balance</option>
               <option value="balance-due">Balance Due</option>
               <option value="active-plan">Active Plan</option>
             </select>

@@ -464,11 +464,8 @@ export default function StockReceivePage({
     ? products
         .filter((p) => {
           const q = siProduct.trim().toLowerCase();
-          return (
-            String(p.name || '').toLowerCase().includes(q) ||
-            String(p.code || '').toLowerCase().includes(q) ||
-            String(p.barcode || '').toLowerCase().includes(q)
-          );
+          const searchable = [p.name, p.code, p.barcode, p.model].filter(Boolean).join(' ').toLowerCase();
+          return q.split(/\s+/).every((word) => searchable.includes(word));
         })
         .slice(0, 6)
     : [];

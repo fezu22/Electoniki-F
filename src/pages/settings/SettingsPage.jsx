@@ -11,7 +11,7 @@ export default function SettingsView({ shop = {}, user = {}, users = [], onRefre
   const [address, setAddress] = useState(shop.address || '');
   const [city, setCity] = useState(shop.city || '');
   const [invoicePrefix, setInvoicePrefix] = useState(shop.invoicePrefix || 'INV');
-  const [openingCash, setOpeningCash] = useState(String(shop.openingCash ?? 45000));
+  const [openingCash, setOpeningCash] = useState(String(shop.openingCash ?? 0));
   const [receiptFooter, setReceiptFooter] = useState(shop.receiptFooter || '');
   const [installmentRemindersEnabled, setInstallmentRemindersEnabled] = useState(
     Boolean(shop.automation?.installmentRemindersEnabled)

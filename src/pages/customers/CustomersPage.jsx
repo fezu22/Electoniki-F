@@ -10,6 +10,8 @@ export default function CustomersView({
 }) {
   const [search, setSearch] = useState('');
   const [selectedLedgerCustomer, setSelectedLedgerCustomer] = useState(null);
+  const ledgerCustomer = customers.find((customer) => customer.id === selectedLedgerCustomer?.id) || selectedLedgerCustomer;
+  const ledgerSales = ledgerCustomer ? sales.filter((bill) => bill.customerId && bill.customerId !== 'walkin' ? bill.customerId === ledgerCustomer.id : bill.customer === ledgerCustomer.name) : [];
 
   const filtered = customers.filter((c) => {
     const q = search.trim().toLowerCase();
@@ -76,7 +78,7 @@ export default function CustomersView({
               <tbody>
                 {filtered.map((c) => {
                   const custBills = sales.filter(
-                    (b) => b.customerId === c.id || b.customer === c.name
+                    (b) => b.customerId && b.customerId !== 'walkin' ? b.customerId === c.id : b.customer === c.name
                   );
                   const outstanding = custBills.reduce((s, b) => s + num(b.balance), 0);
                   return (
@@ -143,12 +145,13 @@ export default function CustomersView({
               </button>
             </div>
             <div className="modal-body">
+              <div className="mod-summary">
+                <div><small>Total billed</small><b>{money(ledgerSales.reduce((sum, bill) => sum + num(bill.total), 0))}</b></div>
+                <div><small>Collected</small><b>{money(ledgerSales.reduce((sum, bill) => sum + num(bill.paid), 0))}</b></div>
+                <div><small>Outstanding</small><b>{money(ledgerSales.reduce((sum, bill) => sum + num(bill.balance), 0))}</b></div>
+              </div>
               {(() => {
-                const cSales = sales.filter(
-                  (b) =>
-                    b.customerId === selectedLedgerCustomer.id ||
-                    b.customer === selectedLedgerCustomer.name
-                );
+                const cSales = ledgerSales;
                 if (cSales.length === 0) {
                   return <div className="empty">No invoices recorded for this customer yet.</div>;
                 }
@@ -185,6 +188,7 @@ export default function CustomersView({
               })()}
             </div>
             <div className="modal-actions">
+              <button type="button" className="btn" onClick={() => { onEditCustomer(ledgerCustomer); setSelectedLedgerCustomer(null); }}>Edit customer</button>
               <button
                 type="button"
                 className="btn ghost"

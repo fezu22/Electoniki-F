@@ -351,7 +351,10 @@ export default function App() {
     const requestSequence = ++workspaceRefreshSequence.current;
     const query = new URLSearchParams({ period, ...(period === 'date' ? { date } : {}) });
     const boot = await apiRequest(role === 'overview_viewer' ? '/overview' : `/bootstrap?${query}`);
-    if (requestSequence === workspaceRefreshSequence.current) setData(boot);
+    if (requestSequence === workspaceRefreshSequence.current) {
+      setData(boot);
+      setActiveKhataPlan((current) => current ? (boot.installmentPlans || []).find((item) => item.id === current.id) || null : null);
+    }
   }
 
   useEffect(() => {
@@ -1253,6 +1256,7 @@ export default function App() {
                     guarantor: String(fd.get('guarantor') || '').trim(),
                     guarantorPhone: String(fd.get('guarantorPhone') || '').trim(),
                     guarantorAddress: String(fd.get('guarantorAddress') || '').trim(),
+                    guarantorCnic: String(fd.get('guarantorCnic') || '').trim(),
                     guarantorPhoto,
                   };
                   setCustomerInfo(info);
@@ -1349,6 +1353,10 @@ export default function App() {
                       }
                       placeholder="03XX XXXXXXX"
                     />
+                  </label>
+                  <label className="field">
+                    Guarantor CNIC (optional)
+                    <input name="guarantorCnic" defaultValue={customerInfo?.guarantorCnic || selectedCustomerObj.guarantorCnic || ''} placeholder="XXXXX-XXXXXXX-X" />
                   </label>
                   <label className="field full">
                     Guarantor address (optional)
@@ -1745,7 +1753,8 @@ export default function App() {
                     marginBottom: 16,
                   }}
                 >
-                  <div className="modal-section">RECORD PARTIAL OR FULL INSTALLMENT PAYMENT</div>
+                  <div className="modal-section">LOAN / INSTALLMENT PAYMENT</div>
+                  <p className="muted tiny">Make payments over time or settle the full balance. The loan closes automatically when it reaches Rs. 0.</p>
                   <div className="fields">
                     <label className="field">
                       Payment Amount (Rs.)
@@ -1794,7 +1803,8 @@ export default function App() {
                       />
                     </label>
                   </div>
-                  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <button type="button" className="btn ghost" disabled={savingKhataPayment} onClick={() => setKhataPayAmount(String(num(activeKhataPlan.balance)))}>Pay full balance</button>
                     <button type="submit" className="btn" disabled={savingKhataPayment}>
                       Record Payment & Update Khata
                     </button>

@@ -42,7 +42,8 @@ export function toInvoiceModel(sale = {}, shop = {}) {
     : [];
   const gross = Number(sale.gross) || subtotal(items);
   const total = Number(sale.total) || Math.max(0, gross - (Number(sale.billDiscount) || 0) + (Number(sale.add) || 0));
-  const paid = Math.min(total, Number(sale.paid ?? sale.initialPaid) || 0);
+  const rawPaid = Number(sale.paid ?? sale.initialPaid);
+  const paid = Math.min(total, Math.max(0, Number.isFinite(rawPaid) ? rawPaid : 0));
   const paymentDetails = sale.paymentDetails || {};
   const methodValue = String(paymentDetails.method || sale.paymentMethod || 'cash').toLowerCase();
   const paymentMethod = methodValue.includes('bank') ? 'Bank' : 'Cash';
@@ -60,7 +61,9 @@ export function toInvoiceModel(sale = {}, shop = {}) {
     markup: Number(sale.add) || 0,
     total,
     paid,
-    balance: Math.max(0, Number(sale.balance ?? total - paid) || 0),
+    balance: Math.max(0, sale.balance !== undefined && sale.balance !== null && Number.isFinite(Number(sale.balance)) ? Number(sale.balance) : total - paid),
+    guarantorName: sale.guarantor || '',
+    guarantorCnic: sale.guarantorCnic || sale.installmentDetails?.guarantor?.cnic || '',
     months: Math.max(0, Math.floor(Number(sale.months) || 0)),
     monthly: Number(sale.monthly) || 0,
     paymentMethod,

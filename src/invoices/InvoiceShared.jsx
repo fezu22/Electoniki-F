@@ -43,6 +43,7 @@ export function CustomerBlock({ data }) {
       </div>
       <div className="ci-customer-row"><b>Customer Name</b><strong className="ci-customer-value">{data.customerName}</strong></div>
       <div className="ci-customer-row"><b>Address</b><strong className="ci-customer-value">{data.customerAddress}</strong></div>
+      {data.guarantorCnic && <div className="ci-customer-row"><b>Guarantor CNIC</b><strong className="ci-customer-value">{data.guarantorCnic}</strong></div>}
     </section>
   );
 }

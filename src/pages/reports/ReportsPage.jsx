@@ -88,7 +88,7 @@ export default function ReportsView({
     } else if (activeReport === 'customers') {
       headers = ['Customer', 'Phone', 'Invoices Count', 'Total Billed', 'Total Paid', 'Outstanding Balance'];
       rows = customers.map((customer) => {
-        const bills = sales.filter((bill) => bill.customerId === customer.id || bill.customer === customer.name);
+        const bills = sales.filter((bill) => bill.customerId && bill.customerId !== 'walkin' ? bill.customerId === customer.id : bill.customer === customer.name);
         return [customer.name, customer.phone, bills.length, bills.reduce((sum, bill) => sum + num(bill.total), 0),
           bills.reduce((sum, bill) => sum + num(bill.paid), 0), bills.reduce((sum, bill) => sum + num(bill.balance), 0)];
       });
@@ -320,7 +320,7 @@ export default function ReportsView({
               <tbody>
                 {customers.map((c) => {
                   const cBills = sales.filter(
-                    (b) => b.customerId === c.id || b.customer === c.name
+                    (b) => b.customerId && b.customerId !== 'walkin' ? b.customerId === c.id : b.customer === c.name
                   );
                   const billed = cBills.reduce((s, b) => s + num(b.total), 0);
                   const paid = cBills.reduce((s, b) => s + num(b.paid), 0);

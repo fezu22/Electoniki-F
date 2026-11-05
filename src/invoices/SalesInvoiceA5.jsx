@@ -11,6 +11,8 @@ export default function SalesInvoiceA5({ invoice }) {
     ['Subtotal', money(invoice.subtotal)],
     ...(invoice.discount ? [['Discount', `- ${money(invoice.discount)}`]] : []),
     ['Total Amount', money(invoice.total), true],
+    ['Amount Paid', money(invoice.paid)],
+    ['Remaining Balance', money(invoice.balance), true],
     ['Payment Method', invoice.paymentMethod, true],
     ...(invoice.paymentMethod === 'Bank' && invoice.bankName ? [['Bank', invoice.bankName]] : []),
   ];
