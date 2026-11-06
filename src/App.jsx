@@ -19,7 +19,7 @@ import {
   Download,
 } from 'lucide-react';
 import { apiRequest, setSessionToken, money, num } from './api.js';
-import { buildWhatsAppInvoiceShare, createInvoiceElementPdf, downloadInvoiceElementPdf, downloadInvoicePdfBlob } from './utils/pdfGenerator.js';
+import { blobToDataUrl, buildWhatsAppInvoiceShare, createInvoiceElementPdf, downloadInvoiceElementPdf, downloadInvoicePdfBlob } from './utils/pdfGenerator.js';
 import SalesInvoiceA5 from './invoices/SalesInvoiceA5.jsx';
 import InstallmentInvoiceA5 from './invoices/InstallmentInvoiceA5.jsx';
 import { toInvoiceModel } from './invoices/invoiceData.js';
@@ -332,6 +332,7 @@ export default function App() {
   const [editingCustomerRecord, setEditingCustomerRecord] = useState(null);
   const [previewInvoice, setPreviewInvoice] = useState(null);
   const [whatsAppShareInfo, setWhatsAppShareInfo] = useState(null);
+  const [sendingWhatsAppInvoice, setSendingWhatsAppInvoice] = useState(false);
 
   function notify(msg) {
     setToastMsg(msg);
@@ -727,6 +728,30 @@ export default function App() {
       await navigator.share({ files: [whatsAppShareInfo.file], title: `Invoice ${whatsAppShareInfo.bill?.invoiceNo || ''}`, text: whatsAppShareInfo.text });
     } catch (error) {
       if (error?.name !== 'AbortError') showAlert('Could not share invoice', error?.message || 'Download the PDF and attach it manually in WhatsApp.', 'warning');
+    }
+  }
+
+  async function sendInvoicePdfDirectly() {
+    if (!whatsAppShareInfo?.targetPhone || !whatsAppShareInfo?.blob || sendingWhatsAppInvoice) return;
+    setSendingWhatsAppInvoice(true);
+    try {
+      await apiRequest('/whatsapp/invoice-document', {
+        method: 'POST',
+        body: {
+          invoiceNo: whatsAppShareInfo.bill?.invoiceNo,
+          to: whatsAppShareInfo.targetPhone,
+          fileName: whatsAppShareInfo.fileName,
+          pdfDataUrl: await blobToDataUrl(whatsAppShareInfo.blob),
+          caption: whatsAppShareInfo.text,
+        },
+      });
+      const invoiceNo = whatsAppShareInfo.bill?.invoiceNo || '';
+      setWhatsAppShareInfo(null);
+      showAlert('Invoice sent', `Invoice ${invoiceNo} PDF was sent to the customer's WhatsApp number.`, 'success');
+    } catch (error) {
+      showAlert('Could not send invoice on WhatsApp', error?.message || 'Check the WhatsApp Cloud API setup and try again.', 'warning');
+    } finally {
+      setSendingWhatsAppInvoice(false);
     }
   }
 
@@ -2129,7 +2154,7 @@ export default function App() {
             </div>
             <div className="modal-body">
               <div className="modal-note" style={{ marginTop: 0 }}>
-                A5 invoice PDF <b>{whatsAppShareInfo.fileName}</b> is ready. {whatsAppShareInfo.supportsFileShare ? 'Use the button below to share the PDF and invoice message together. Choose WhatsApp, select the customer, then confirm Send in WhatsApp.' : 'This browser cannot attach files to WhatsApp directly. The PDF has been downloaded; open WhatsApp and attach it manually before sending.'} {whatsAppShareInfo.targetPhone ? '' : 'No customer WhatsApp number is saved, so choose the customer in WhatsApp.'}
+                A5 invoice PDF <b>{whatsAppShareInfo.fileName}</b> is ready. {whatsAppShareInfo.supportsFileShare ? 'You can share the PDF from this device, or use direct send through the configured WhatsApp Business Cloud API.' : 'This browser cannot attach files from the share sheet. Use direct send through WhatsApp Business Cloud API, or download and attach it manually.'} {whatsAppShareInfo.targetPhone ? '' : 'No customer WhatsApp number is saved, so direct send is unavailable.'}
               </div>
 
               <label className="field" style={{ marginTop: 14 }}>
@@ -2153,6 +2178,9 @@ export default function App() {
                 Download A5 PDF
               </button>
               {whatsAppShareInfo.supportsFileShare && <button type="button" className="btn" onClick={shareInvoicePdf}>Share PDF + Message</button>}
+              {whatsAppShareInfo.targetPhone && <button type="button" className="btn" onClick={sendInvoicePdfDirectly} disabled={sendingWhatsAppInvoice}>
+                {sendingWhatsAppInvoice ? 'Sending PDF…' : 'Send PDF directly to customer'}
+              </button>}
               {!whatsAppShareInfo.supportsFileShare && <a
                 href={whatsAppShareInfo.waUrl}
                 target="_blank"

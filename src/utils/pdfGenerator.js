@@ -83,6 +83,15 @@ export function downloadInvoicePdfBlob(blob, fileName) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+export function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Could not prepare the invoice PDF for WhatsApp.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 /** Capture every A5 invoice page and download them together as a PDF. */
 export async function downloadInvoiceElementPdf(element, fileName) {
   const pdf = await createInvoiceElementPdf(element, fileName);
