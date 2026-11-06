@@ -755,6 +755,28 @@ export default function App() {
     }
   }
 
+  function openWhatsAppForInvoice() {
+    if (!whatsAppShareInfo) return;
+    // wa.me opens the WhatsApp account already signed in on this device and
+    // pre-fills the invoice message. WhatsApp links cannot attach local files.
+    const openedWindow = window.open(whatsAppShareInfo.waUrl, '_blank');
+    if (openedWindow) openedWindow.opener = null;
+    try {
+      if (whatsAppShareInfo.blob) {
+        downloadInvoicePdfBlob(whatsAppShareInfo.blob, whatsAppShareInfo.fileName || 'invoice.pdf');
+      }
+    } catch (error) {
+      showAlert('Could not download invoice PDF', error?.message || 'Download the PDF and attach it in WhatsApp.', 'warning');
+      return;
+    }
+    if (!openedWindow) {
+      showAlert('Allow WhatsApp to open', 'Your browser blocked the new tab. Allow pop-ups for this app, then try again.', 'warning');
+      return;
+    }
+    setWhatsAppShareInfo(null);
+    showAlert('WhatsApp opened', 'The invoice message is ready. Attach the downloaded PDF in the WhatsApp chat before sending.', 'success');
+  }
+
   if (authLoading) {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#12303f' }}>
@@ -2154,7 +2176,7 @@ export default function App() {
             </div>
             <div className="modal-body">
               <div className="modal-note" style={{ marginTop: 0 }}>
-                A5 invoice PDF <b>{whatsAppShareInfo.fileName}</b> is ready. {whatsAppShareInfo.supportsFileShare ? 'You can share the PDF from this device, or use direct send through the configured WhatsApp Business Cloud API.' : 'This browser cannot attach files from the share sheet. Use direct send through WhatsApp Business Cloud API, or download and attach it manually.'} {whatsAppShareInfo.targetPhone ? '' : 'No customer WhatsApp number is saved, so direct send is unavailable.'}
+                A5 invoice PDF <b>{whatsAppShareInfo.fileName}</b> is ready. Open WhatsApp to use the account signed in on this laptop; the invoice message will be prefilled. Attach the downloaded PDF in that chat before sending. {whatsAppShareInfo.targetPhone ? '' : 'No customer number is saved, so choose the recipient in WhatsApp.'}
               </div>
 
               <label className="field" style={{ marginTop: 14 }}>
@@ -2178,6 +2200,9 @@ export default function App() {
                 Download A5 PDF
               </button>
               {whatsAppShareInfo.supportsFileShare && <button type="button" className="btn" onClick={shareInvoicePdf}>Share PDF + Message</button>}
+              <button type="button" className="btn" onClick={openWhatsAppForInvoice}>
+                Open WhatsApp &amp; choose recipient
+              </button>
               {whatsAppShareInfo.targetPhone && <button type="button" className="btn" onClick={sendInvoicePdfDirectly} disabled={sendingWhatsAppInvoice}>
                 {sendingWhatsAppInvoice ? 'Sending PDF…' : 'Send PDF directly to customer'}
               </button>}
