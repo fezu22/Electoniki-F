@@ -755,10 +755,14 @@ export default function App() {
     }
   }
 
-  function openWhatsAppForInvoice() {
+  async function openWhatsAppForInvoice() {
     if (!whatsAppShareInfo) return;
+    if (whatsAppShareInfo.supportsFileShare) {
+      await shareInvoicePdf();
+      return;
+    }
     // wa.me opens the WhatsApp account already signed in on this device and
-    // pre-fills the invoice message. WhatsApp links cannot attach local files.
+    // pre-fills the invoice message when this browser cannot share the PDF.
     const openedWindow = window.open(whatsAppShareInfo.waUrl, '_blank');
     if (openedWindow) openedWindow.opener = null;
     try {
@@ -2176,7 +2180,7 @@ export default function App() {
             </div>
             <div className="modal-body">
               <div className="modal-note" style={{ marginTop: 0 }}>
-                A5 invoice PDF <b>{whatsAppShareInfo.fileName}</b> is ready. Open WhatsApp to use the account signed in on this laptop; the invoice message will be prefilled. Attach the downloaded PDF in that chat before sending. {whatsAppShareInfo.targetPhone ? '' : 'No customer number is saved, so choose the recipient in WhatsApp.'}
+                A5 invoice PDF <b>{whatsAppShareInfo.fileName}</b> is ready. {whatsAppShareInfo.supportsFileShare ? 'Click Send PDF to WhatsApp, then choose WhatsApp in the share window. The PDF will be included as an attachment.' : 'This browser cannot share files. WhatsApp will open with the message; attach the downloaded PDF in that chat before sending.'} {whatsAppShareInfo.targetPhone ? '' : 'No customer number is saved, so choose the recipient in WhatsApp.'}
               </div>
 
               <label className="field" style={{ marginTop: 14 }}>
@@ -2199,9 +2203,8 @@ export default function App() {
               >
                 Download A5 PDF
               </button>
-              {whatsAppShareInfo.supportsFileShare && <button type="button" className="btn" onClick={shareInvoicePdf}>Share PDF + Message</button>}
               <button type="button" className="btn" onClick={openWhatsAppForInvoice}>
-                Open WhatsApp &amp; choose recipient
+                {whatsAppShareInfo.supportsFileShare ? 'Send PDF to WhatsApp' : 'Open WhatsApp & attach PDF'}
               </button>
               {whatsAppShareInfo.targetPhone && <button type="button" className="btn" onClick={sendInvoicePdfDirectly} disabled={sendingWhatsAppInvoice}>
                 {sendingWhatsAppInvoice ? 'Sending PDF…' : 'Send PDF directly to customer'}

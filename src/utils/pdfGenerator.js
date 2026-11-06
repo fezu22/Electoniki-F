@@ -305,7 +305,7 @@ export function buildWhatsAppInvoiceShare(sale, shop) {
   if (shopWa) {
     lines.push(`Shop WhatsApp / Contact: ${shopWa}`);
   }
-  lines.push(`Please find your attached PDF invoice (${invoiceNo}). Thank you for your business!`);
+  lines.push('Thank you for your business!');
 
   const text = lines.join('\n');
   const targetPhone = customerPhone;
