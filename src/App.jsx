@@ -333,6 +333,7 @@ export default function App() {
   const [previewInvoice, setPreviewInvoice] = useState(null);
   const [whatsAppShareInfo, setWhatsAppShareInfo] = useState(null);
   const [sendingWhatsAppInvoice, setSendingWhatsAppInvoice] = useState(false);
+  const sendingWhatsAppInvoiceRef = useRef(false);
 
   function notify(msg) {
     setToastMsg(msg);
@@ -443,10 +444,11 @@ export default function App() {
   // Current selected customer helper
   const selectedCustomerObj =
     customerId === 'walkin' || customerId === 'new'
-      ? { name: 'Walk-in customer', phone: salePhone, cnic: saleCnic, address: saleAddress }
+      ? { name: 'Walk-in customer', phone: salePhone, whatsapp: '', cnic: saleCnic, address: saleAddress }
       : data.customers.find((c) => c.id === customerId) || {
           name: 'Walk-in customer',
           phone: salePhone,
+          whatsapp: '',
           cnic: saleCnic,
           address: saleAddress,
         };
@@ -646,7 +648,7 @@ export default function App() {
           customerInfo: customerInfo || {
             name: selectedCustomerObj.name || 'Walk-in customer',
             phone: salePhone || selectedCustomerObj.phone || '',
-            whatsapp: salePhone || selectedCustomerObj.whatsapp || '',
+            whatsapp: selectedCustomerObj.whatsapp || salePhone || selectedCustomerObj.phone || '',
             cnic: saleCnic || selectedCustomerObj.cnic || '',
             address: saleAddress || selectedCustomerObj.address || '',
           },
@@ -678,17 +680,36 @@ export default function App() {
   }
 
   async function handleWhatsAppInvoice(bill) {
+    if (sendingWhatsAppInvoiceRef.current) return;
+    sendingWhatsAppInvoiceRef.current = true;
+    setSendingWhatsAppInvoice(true);
     const fileName = `${bill.invoiceNo || bill.id || 'invoice'}.pdf`;
+    let generatedShare = null;
     try {
       const invoiceElement = document.querySelector('.invoice-preview-backdrop .ci-preview-host');
       const pdf = await createInvoiceElementPdf(invoiceElement, fileName);
       const share = buildWhatsAppInvoiceShare(bill, data.shop);
       const file = typeof File === 'undefined' ? null : new File([pdf.blob], fileName, { type: 'application/pdf' });
       const supportsFileShare = Boolean(file && navigator.share && navigator.canShare?.({ files: [file] }));
-      if (!supportsFileShare) downloadInvoicePdfBlob(pdf.blob, fileName);
-      setWhatsAppShareInfo({ bill, fileName, blob: pdf.blob, file, supportsFileShare, ...share });
+      generatedShare = { bill, fileName, blob: pdf.blob, file, supportsFileShare, ...share };
+      if (!share.targetPhone) throw new Error('No valid customer WhatsApp number is saved on this invoice. The PDF is ready to download and share manually.');
+      await apiRequest('/whatsapp/invoice-document', {
+        method: 'POST',
+        body: {
+          invoiceNo: bill.invoiceNo,
+          to: share.targetPhone,
+          fileName,
+          pdfDataUrl: await blobToDataUrl(pdf.blob),
+          caption: share.text,
+        },
+      });
+      showAlert('Invoice sent', `Invoice ${bill.invoiceNo || ''} PDF was sent to the customer's WhatsApp number.`, 'success');
     } catch (error) {
-      showAlert('Could not create invoice PDF', error?.message || 'Please try again.', 'warning');
+      if (generatedShare) setWhatsAppShareInfo(generatedShare);
+      showAlert('Could not send invoice on WhatsApp', error?.message || 'Check the WhatsApp connection and try again. You can still download the PDF.', 'warning');
+    } finally {
+      sendingWhatsAppInvoiceRef.current = false;
+      setSendingWhatsAppInvoice(false);
     }
   }
 
@@ -732,7 +753,8 @@ export default function App() {
   }
 
   async function sendInvoicePdfDirectly() {
-    if (!whatsAppShareInfo?.targetPhone || !whatsAppShareInfo?.blob || sendingWhatsAppInvoice) return;
+    if (!whatsAppShareInfo?.targetPhone || !whatsAppShareInfo?.blob || sendingWhatsAppInvoiceRef.current) return;
+    sendingWhatsAppInvoiceRef.current = true;
     setSendingWhatsAppInvoice(true);
     try {
       await apiRequest('/whatsapp/invoice-document', {
@@ -751,6 +773,7 @@ export default function App() {
     } catch (error) {
       showAlert('Could not send invoice on WhatsApp', error?.message || 'Check the WhatsApp Cloud API setup and try again.', 'warning');
     } finally {
+      sendingWhatsAppInvoiceRef.current = false;
       setSendingWhatsAppInvoice(false);
     }
   }
@@ -2146,8 +2169,9 @@ export default function App() {
                 type="button"
                 className="btn secondary"
                 onClick={() => handleWhatsAppInvoice(previewInvoice)}
+                disabled={sendingWhatsAppInvoice}
               >
-                WhatsApp PDF Invoice
+                {sendingWhatsAppInvoice ? 'Sending…' : 'WhatsApp PDF Invoice'}
               </button>
             </div>
           </div>
@@ -2207,7 +2231,7 @@ export default function App() {
                 {whatsAppShareInfo.supportsFileShare ? 'Send PDF to WhatsApp' : 'Open WhatsApp & attach PDF'}
               </button>
               {whatsAppShareInfo.targetPhone && <button type="button" className="btn" onClick={sendInvoicePdfDirectly} disabled={sendingWhatsAppInvoice}>
-                {sendingWhatsAppInvoice ? 'Sending PDF…' : 'Send PDF directly to customer'}
+                {sendingWhatsAppInvoice ? 'Sending…' : 'Send PDF directly to customer'}
               </button>}
               {!whatsAppShareInfo.supportsFileShare && <a
                 href={whatsAppShareInfo.waUrl}
